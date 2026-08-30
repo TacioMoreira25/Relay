@@ -10,9 +10,11 @@ Este documento define o plano de entrega do Relay, partindo do MVP até a maturi
 - [x] Implementação do esqueleto de comando IPC para inicialização/parada do Proxy.
 
 ### 🔹 Fase 2: Motor de Proxy HTTP/1.1 Assíncrono
-- [ ] Implementação do listener TCP assíncrono com Hyper 1.x e Tokio.
-- [ ] Encaminhamento transparente de requisições e respostas para o upstream configurado.
-- [ ] Mecanismo de shutdown gracioso do servidor proxy via canais `tokio::sync::watch`.
+- [x] Implementação do listener TCP assíncrono com Hyper 1.x e Tokio.
+- [x] Encaminhamento transparente de requisições e respostas para o upstream configurado com sanitização de headers hop-by-hop.
+- [x] Mecanismo de shutdown gracioso do servidor proxy via canais `tokio::sync::watch`.
+- [x] Modal de configuração interativa de portas (`listenPort`, `targetHost`, `targetPort`, `latencyMs`) no frontend Svelte 5.
+- [x] Teste unitário automatizado do repasse HTTP assíncrono com mock listener Tokio.
 
 ### 🔹 Fase 3: Interceptador & Streaming de Tráfego em Tempo Real
 - [ ] Captura de headers, método, URI e corpo da requisição sem bloqueio do stream.

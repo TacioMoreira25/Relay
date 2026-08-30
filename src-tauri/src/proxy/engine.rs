@@ -69,7 +69,7 @@ impl ProxyServer {
                                         .serve_connection(io, service)
                                         .await
                                     {
-                                        warn!("Erro na conexao de proxy: {:?}", err);
+                                        warn!("Conexao de proxy encerrada ou com erro: {:?}", err);
                                     }
                                 });
                             }
@@ -110,7 +110,7 @@ async fn handle_proxy_request(
 
     let (parts, incoming_body) = req.into_parts();
 
-    // Leitura assíncrona do payload sem reter bloqueios
+    // Leitura assíncrona do payload sem bloquear o stream de rede
     let body_bytes = match incoming_body.collect().await {
         Ok(collected) => collected.to_bytes(),
         Err(_) => Bytes::new(),
@@ -146,20 +146,21 @@ async fn handle_proxy_request(
 
     let _ = app.emit("relay:request", exchange);
 
-    // Injeção de latência simulada
+    // Injeção de latência configurada (Tokio async sleep)
     if config.latency_ms > 0 {
         tokio::time::sleep(tokio::time::Duration::from_millis(config.latency_ms)).await;
     }
 
-    // Encaminha requisição para o alvo (Upstream)
-    let target_uri = format!(
-        "http://{}:{}{}",
-        config.target_host, config.target_port, parts.uri
-    );
+    // Encaminhamento transparente para o servidor Upstream
+    let path_and_query = parts
+        .uri
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or("/");
 
     let forward_res = forward_to_upstream(
         &parts.method,
-        &target_uri,
+        path_and_query,
         &headers_vec,
         body_bytes,
         &config,
@@ -186,6 +187,12 @@ async fn handle_proxy_request(
 
             let mut resp = Response::builder().status(res_status);
             for h in res_headers {
+                // Remove headers hop-by-hop problemáticos em proxies HTTP/1.1
+                if h.key.eq_ignore_ascii_case("transfer-encoding")
+                    || h.key.eq_ignore_ascii_case("connection")
+                {
+                    continue;
+                }
                 if let Ok(name) = hyper::header::HeaderName::from_bytes(h.key.as_bytes()) {
                     if let Ok(val) = hyper::header::HeaderValue::from_str(&h.value) {
                         resp = resp.header(name, val);
@@ -223,7 +230,7 @@ async fn handle_proxy_request(
 
 async fn forward_to_upstream(
     method: &hyper::Method,
-    target_url: &str,
+    path_and_query: &str,
     headers: &[HeaderEntry],
     body_bytes: Bytes,
     config: &ProxyConfig,
@@ -231,23 +238,27 @@ async fn forward_to_upstream(
     let target_addr = format!("{}:{}", config.target_host, config.target_port);
     let stream = TcpStream::connect(&target_addr)
         .await
-        .map_err(|e| format!("Falha de conexao com upstream: {}", e))?;
+        .map_err(|e| format!("Falha ao conectar com o upstream ({}): {}", target_addr, e))?;
     let io = TokioIo::new(stream);
 
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io)
         .await
-        .map_err(|e| format!("Erro no handshake com upstream: {}", e))?;
+        .map_err(|e| format!("Erro no handshake HTTP/1.1 com upstream: {}", e))?;
 
     tokio::spawn(async move {
         if let Err(err) = conn.await {
-            warn!("Conexao com upstream fechou com erro: {:?}", err);
+            warn!("Conexao com upstream finalizada: {:?}", err);
         }
     });
 
-    let mut builder = Request::builder().method(method).uri(target_url);
+    let mut builder = Request::builder().method(method).uri(path_and_query);
 
     for h in headers {
-        if !h.key.eq_ignore_ascii_case("host") {
+        // Ignora o host da requisição original e cabeçalhos de salto
+        if !h.key.eq_ignore_ascii_case("host")
+            && !h.key.eq_ignore_ascii_case("connection")
+            && !h.key.eq_ignore_ascii_case("transfer-encoding")
+        {
             if let Ok(name) = hyper::header::HeaderName::from_bytes(h.key.as_bytes()) {
                 if let Ok(val) = hyper::header::HeaderValue::from_str(&h.value) {
                     builder = builder.header(name, val);
@@ -255,7 +266,7 @@ async fn forward_to_upstream(
             }
         }
     }
-    builder = builder.header("host", target_addr);
+    builder = builder.header("host", &target_addr);
 
     let req = builder
         .body(Full::new(body_bytes))
@@ -279,8 +290,69 @@ async fn forward_to_upstream(
         .into_body()
         .collect()
         .await
-        .map_err(|e| format!("Falha ao coletar body upstream: {}", e))?
+        .map_err(|e| format!("Falha ao coletar resposta do upstream: {}", e))?
         .to_bytes();
 
     Ok((status, res_headers, res_body_bytes))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use http_body_util::Full;
+    use hyper::service::service_fn;
+    use hyper::{Response, StatusCode};
+    use hyper_util::rt::TokioIo;
+    use std::convert::Infallible;
+    use tokio::net::TcpListener;
+
+    #[tokio::test]
+    async fn test_forward_to_upstream_success() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let local_addr = listener.local_addr().unwrap();
+        let port = local_addr.port();
+
+        tokio::spawn(async move {
+            if let Ok((stream, _)) = listener.accept().await {
+                let io = TokioIo::new(stream);
+                let service = service_fn(|_req| async {
+                    Ok::<_, Infallible>(
+                        Response::builder()
+                            .status(StatusCode::OK)
+                            .header("x-mock-test", "passed")
+                            .body(Full::new(Bytes::from("hello from test upstream")))
+                            .unwrap(),
+                    )
+                });
+                let _ = hyper::server::conn::http1::Builder::new()
+                    .serve_connection(io, service)
+                    .await;
+            }
+        });
+
+        let config = ProxyConfig {
+            listen_port: 0,
+            target_host: "127.0.0.1".to_string(),
+            target_port: port,
+            latency_ms: 0,
+            simulate_failure_rate: 0.0,
+            auto_extract_jwt: false,
+        };
+
+        let method = hyper::Method::GET;
+        let headers = vec![HeaderEntry {
+            key: "user-agent".to_string(),
+            value: "relay-unit-test".to_string(),
+        }];
+
+        let result = forward_to_upstream(&method, "/api/test", &headers, Bytes::new(), &config).await;
+
+        assert!(result.is_ok());
+        let (status, resp_headers, body) = result.unwrap();
+        assert_eq!(status, StatusCode::OK);
+        assert!(resp_headers
+            .iter()
+            .any(|h| h.key == "x-mock-test" && h.value == "passed"));
+        assert_eq!(body, Bytes::from("hello from test upstream"));
+    }
 }

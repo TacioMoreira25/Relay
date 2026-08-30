@@ -2,11 +2,14 @@
   import RequestList from "$lib/components/RequestList.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
   import TestTrigger from "$lib/components/TestTrigger.svelte";
+  import ProxyConfigModal from "$lib/components/ProxyConfigModal.svelte";
   import { relayState } from "$lib/stores/traffic.svelte";
   import type { HttpExchange, InterceptedResponse } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
+
+  let isConfigOpen = $state(false);
 
   onMount(() => {
     // Escuta eventos assíncronos de requisições emitidos pelo motor Rust
@@ -55,13 +58,22 @@
       <span class="text-xs text-zinc-500">| Native HTTP Interceptor & Replay</span>
     </div>
 
-    <!-- Proxy Controls & Test Trigger -->
+    <!-- Proxy Controls, Port Badge & Test Trigger -->
     <div class="flex items-center space-x-3">
-      <div class="flex items-center space-x-2 text-xs font-mono">
-        <span class="text-zinc-500">127.0.0.1:{relayState.config.listenPort}</span>
+      <button
+        onclick={() => (isConfigOpen = true)}
+        class="flex items-center space-x-2 text-xs font-mono bg-zinc-800/80 hover:bg-zinc-800 px-2.5 py-1 rounded border border-zinc-700/60 transition-colors"
+        title="Clique para configurar portas e host"
+      >
+        <span class="text-zinc-400">127.0.0.1:{relayState.config.listenPort}</span>
         <span class="text-zinc-600">➔</span>
-        <span class="text-zinc-400">{relayState.config.targetHost}:{relayState.config.targetPort}</span>
-      </div>
+        <span class="text-indigo-400">{relayState.config.targetHost}:{relayState.config.targetPort}</span>
+        {#if relayState.config.latencyMs > 0}
+          <span class="text-[10px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-sans">
+            +{relayState.config.latencyMs}ms
+          </span>
+        {/if}
+      </button>
 
       <TestTrigger />
 
@@ -87,4 +99,7 @@
       <Inspector />
     </div>
   </div>
+
+  <!-- Config Modal -->
+  <ProxyConfigModal bind:isOpen={isConfigOpen} />
 </main>
