@@ -33,6 +33,7 @@ pub fn run() {
             commands::stop_proxy,
             commands::update_proxy_config,
             commands::get_session_jwts,
+            commands::clear_session_jwts,
             commands::get_exchanges,
             commands::clear_exchanges,
         ])

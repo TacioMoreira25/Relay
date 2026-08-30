@@ -24,9 +24,11 @@ Este documento define o plano de entrega do Relay, partindo do MVP até a maturi
 - [x] Auto-formatação e identação inteligente de JSON no `Inspector.svelte` com botões rápidos de cópia para a área de transferência.
 
 ### 🔹 Fase 4: Auto-Detecção & Gerenciador de Sessão JWT
-- [ ] Parser regex/heurístico de tokens JWT em headers (`Authorization: Bearer ...`) e payloads de resposta.
-- [ ] Armazenamento em memória com descriptografia e decodificação automática de claims.
-- [ ] Painel lateral na UI para visualização e cópia rápida de tokens detectados.
+- [x] Parser regex/heurístico de tokens JWT em cabeçalhos (`Authorization: Bearer ...`, `x-access-token`, `token`).
+- [x] Scanner automático de tokens JWT em payloads de resposta JSON (campos `token`, `accessToken`, `jwt`, `id_token`).
+- [x] Armazenamento seguro de sessão em memória com decodificação base64 URL-safe e extração de claims (`sub`, `iss`, `exp`).
+- [x] Painel visual dedicado na UI (`JwtManager.svelte`) com cálculo de tempo de expiração (`exp`), visualização de claims formatados e botões de cópia rápida para `Bearer <token>`.
+- [x] Testes unitários no Rust para decodificação de JWT e extração de headers (`test_decode_jwt_token`, `test_extract_jwts_from_headers`).
 
 ### 🔹 Fase 5: Simulador de Falhas de Rede & Chaos Engineering
 - [ ] Suporte à injeção de latência configurável (milissegundos com jitter opcional).

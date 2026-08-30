@@ -3,23 +3,28 @@
   import Inspector from "$lib/components/Inspector.svelte";
   import TestTrigger from "$lib/components/TestTrigger.svelte";
   import ProxyConfigModal from "$lib/components/ProxyConfigModal.svelte";
+  import JwtManager from "$lib/components/JwtManager.svelte";
   import { relayState } from "$lib/stores/traffic.svelte";
-  import type { HttpExchange, InterceptedResponse } from "$lib/types";
+  import type { HttpExchange, InterceptedResponse, ExtractedJwt } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
   let isConfigOpen = $state(false);
 
-  async function fetchExchangesFromBackend(): Promise<void> {
+  async function syncInitialState(): Promise<void> {
     try {
       const items = await invoke<HttpExchange[]>("get_exchanges");
       if (items && items.length > 0) {
-        // Inverte para ter os mais recentes no topo
         relayState.exchanges = items.slice().reverse();
       }
+
+      const tokens = await invoke<ExtractedJwt[]>("get_session_jwts");
+      if (tokens && tokens.length > 0) {
+        relayState.jwts = tokens;
+      }
     } catch (e) {
-      console.warn("Falha ao sincronizar exchanges iniciais:", e);
+      console.warn("Falha ao sincronizar dados iniciais:", e);
     }
   }
 
@@ -27,9 +32,10 @@
     let unlistenReq: UnlistenFn | undefined;
     let unlistenRes: UnlistenFn | undefined;
     let unlistenErr: UnlistenFn | undefined;
+    let unlistenJwt: UnlistenFn | undefined;
 
     // Sincroniza estado inicial do backend
-    fetchExchangesFromBackend();
+    syncInitialState();
 
     // Registra os listeners IPC do Tauri v2
     listen<HttpExchange>("relay:request", (event) => {
@@ -50,10 +56,17 @@
       unlistenErr = fn;
     });
 
+    listen<ExtractedJwt>("relay:jwt", (event) => {
+      relayState.addJwt(event.payload);
+    }).then((fn) => {
+      unlistenJwt = fn;
+    });
+
     return () => {
       unlistenReq?.();
       unlistenRes?.();
       unlistenErr?.();
+      unlistenJwt?.();
     };
   });
 
@@ -75,12 +88,43 @@
 <main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 font-sans select-none">
   <!-- Top Bar -->
   <header class="h-12 border-b border-zinc-800 bg-zinc-900/80 px-4 flex items-center justify-between">
-    <div class="flex items-center space-x-3">
-      <div class="flex items-center space-x-1.5 font-bold tracking-tight text-white">
-        <div class="w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>
-        <span class="text-sm">RELAY</span>
+    <div class="flex items-center space-x-6">
+      <div class="flex items-center space-x-3">
+        <div class="flex items-center space-x-1.5 font-bold tracking-tight text-white">
+          <div class="w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>
+          <span class="text-sm">RELAY</span>
+        </div>
+        <span class="text-xs text-zinc-500 hidden sm:inline">| Native HTTP Interceptor & Replay</span>
       </div>
-      <span class="text-xs text-zinc-500">| Native HTTP Interceptor & Replay</span>
+
+      <!-- Navigation Tabs (Traffic vs JWT Session) -->
+      <div class="flex items-center space-x-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs">
+        <button
+          onclick={() => (relayState.activeView = "traffic")}
+          class="px-3 py-1 rounded transition-colors flex items-center space-x-1.5 {relayState.activeView === 'traffic' ? 'bg-zinc-800 text-white font-medium shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}"
+        >
+          <span>🌐</span>
+          <span>Tráfego HTTP</span>
+          {#if relayState.totalRequests > 0}
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-700 text-zinc-300 font-mono">
+              {relayState.totalRequests}
+            </span>
+          {/if}
+        </button>
+
+        <button
+          onclick={() => (relayState.activeView = "jwt")}
+          class="px-3 py-1 rounded transition-colors flex items-center space-x-1.5 {relayState.activeView === 'jwt' ? 'bg-zinc-800 text-white font-medium shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}"
+        >
+          <span>🛡️</span>
+          <span>Sessão & JWT</span>
+          {#if relayState.totalJwts > 0}
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-600/60 text-indigo-200 font-mono">
+              {relayState.totalJwts}
+            </span>
+          {/if}
+        </button>
+      </div>
     </div>
 
     <!-- Proxy Controls, Port Badge & Test Trigger -->
@@ -112,17 +156,22 @@
     </div>
   </header>
 
-  <!-- Main View Split -->
+  <!-- Main View Content Switcher -->
   <div class="flex-1 flex overflow-hidden">
-    <!-- Left Column: Request List -->
-    <div class="w-80 border-r border-zinc-800 h-full">
-      <RequestList />
-    </div>
+    {#if relayState.activeView === "traffic"}
+      <!-- Left Column: Request List -->
+      <div class="w-80 border-r border-zinc-800 h-full">
+        <RequestList />
+      </div>
 
-    <!-- Right Column: Inspector -->
-    <div class="flex-1 h-full">
-      <Inspector />
-    </div>
+      <!-- Right Column: Inspector -->
+      <div class="flex-1 h-full">
+        <Inspector />
+      </div>
+    {:else}
+      <!-- JWT Manager View -->
+      <JwtManager />
+    {/if}
   </div>
 
   <!-- Config Modal -->

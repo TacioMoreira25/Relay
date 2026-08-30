@@ -45,7 +45,11 @@ export interface ProxyConfig {
 
 export interface ExtractedJwt {
   token: string;
-  source: "request_header" | "response_header" | "response_body";
+  source: string;
   detectedAt: number;
   claims?: Record<string, unknown>;
+  header?: Record<string, unknown>;
+  subject?: string;
+  issuer?: string;
+  expiresAt?: number;
 }

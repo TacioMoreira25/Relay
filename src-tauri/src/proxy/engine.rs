@@ -19,6 +19,7 @@ use super::recorder::{
     HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig,
 };
 use crate::commands::AppState;
+use crate::state::{extract_jwts_from_body, extract_jwts_from_headers};
 
 pub struct ProxyServer {
     config: ProxyConfig,
@@ -121,11 +122,15 @@ async fn handle_proxy_request(
     };
 
     let mut headers_vec = Vec::new();
+    let mut header_tuples = Vec::new();
     for (k, v) in parts.headers.iter() {
+        let key_str = k.as_str().to_string();
+        let val_str = v.to_str().unwrap_or_default().to_string();
         headers_vec.push(HeaderEntry {
-            key: k.as_str().to_string(),
-            value: v.to_str().unwrap_or_default().to_string(),
+            key: key_str.clone(),
+            value: val_str.clone(),
         });
+        header_tuples.push((key_str, val_str));
     }
 
     let body_str = String::from_utf8(body_bytes.to_vec()).ok();
@@ -154,6 +159,17 @@ async fn handle_proxy_request(
         status: "pending".to_string(),
         error: None,
     };
+
+    // Auto-extração de JWT nos cabeçalhos da Requisição
+    if config.auto_extract_jwt {
+        let req_jwts = extract_jwts_from_headers(&header_tuples, "request");
+        if let Some(state) = app.try_state::<Arc<AppState>>() {
+            for jwt in req_jwts {
+                state.session.insert_jwt(jwt.clone());
+                let _ = app.emit("relay:jwt", &jwt);
+            }
+        }
+    }
 
     // Armazena no estado compartilhado em memória
     if let Some(state) = app.try_state::<Arc<AppState>>() {
@@ -194,10 +210,31 @@ async fn handle_proxy_request(
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 status_code: res_status.as_u16(),
                 headers: res_headers.clone(),
-                body: res_body_str,
+                body: res_body_str.clone(),
                 size_bytes: res_bytes.len(),
                 duration_ms,
             };
+
+            // Auto-extração de JWT nos cabeçalhos e body da Resposta
+            if config.auto_extract_jwt {
+                let res_header_tuples: Vec<(String, String)> = res_headers
+                    .iter()
+                    .map(|h| (h.key.clone(), h.value.clone()))
+                    .collect();
+
+                let mut res_jwts = extract_jwts_from_headers(&res_header_tuples, "response");
+                if let Some(ref body_text) = res_body_str {
+                    let body_jwts = extract_jwts_from_body(body_text, "response_body");
+                    res_jwts.extend(body_jwts);
+                }
+
+                if let Some(state) = app.try_state::<Arc<AppState>>() {
+                    for jwt in res_jwts {
+                        state.session.insert_jwt(jwt.clone());
+                        let _ = app.emit("relay:jwt", &jwt);
+                    }
+                }
+            }
 
             // Atualiza no estado compartilhado
             if let Some(state) = app.try_state::<Arc<AppState>>() {

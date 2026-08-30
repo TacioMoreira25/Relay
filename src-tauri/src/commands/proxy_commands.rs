@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, State};
 
 use crate::proxy::{HttpExchange, ProxyConfig, ProxyServer};
-use crate::state::SessionState;
+use crate::state::{ExtractedJwt, SessionState};
 
 pub struct AppState {
     pub proxy_server: Mutex<Option<ProxyServer>>,
@@ -52,8 +52,14 @@ pub async fn update_proxy_config(
 #[tauri::command]
 pub async fn get_session_jwts(
     state: State<'_, Arc<AppState>>,
-) -> Result<Vec<crate::state::ExtractedJwt>, String> {
+) -> Result<Vec<ExtractedJwt>, String> {
     Ok(state.session.list_jwts())
+}
+
+#[tauri::command]
+pub async fn clear_session_jwts(state: State<'_, Arc<AppState>>) -> Result<(), String> {
+    state.session.clear();
+    Ok(())
 }
 
 #[tauri::command]
