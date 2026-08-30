@@ -15,7 +15,9 @@ use tokio::sync::watch;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use super::recorder::{HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig};
+use super::recorder::{
+    HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig,
+};
 
 pub struct ProxyServer {
     config: ProxyConfig,
@@ -150,8 +152,11 @@ async fn handle_proxy_request(
     }
 
     // Encaminha requisição para o alvo (Upstream)
-    let target_uri = format!("http://{}:{}{}", config.target_host, config.target_port, parts.uri);
-    
+    let target_uri = format!(
+        "http://{}:{}{}",
+        config.target_host, config.target_port, parts.uri
+    );
+
     let forward_res = forward_to_upstream(
         &parts.method,
         &target_uri,
@@ -197,10 +202,13 @@ async fn handle_proxy_request(
             }))
         }
         Err(err_msg) => {
-            let _ = app.emit("relay:error", serde_json::json!({
-                "requestId": req_id,
-                "error": err_msg,
-            }));
+            let _ = app.emit(
+                "relay:error",
+                serde_json::json!({
+                    "requestId": req_id,
+                    "error": err_msg,
+                }),
+            );
 
             let full_body = Full::new(Bytes::from(format!("Relay Proxy Error: {}", err_msg)))
                 .map_err(|never| match never {});
@@ -221,7 +229,9 @@ async fn forward_to_upstream(
     config: &ProxyConfig,
 ) -> Result<(StatusCode, Vec<HeaderEntry>, Bytes), String> {
     let target_addr = format!("{}:{}", config.target_host, config.target_port);
-    let stream = TcpStream::connect(&target_addr).await.map_err(|e| format!("Falha de conexao com upstream: {}", e))?;
+    let stream = TcpStream::connect(&target_addr)
+        .await
+        .map_err(|e| format!("Falha de conexao com upstream: {}", e))?;
     let io = TokioIo::new(stream);
 
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io)
@@ -234,9 +244,7 @@ async fn forward_to_upstream(
         }
     });
 
-    let mut builder = Request::builder()
-        .method(method)
-        .uri(target_url);
+    let mut builder = Request::builder().method(method).uri(target_url);
 
     for h in headers {
         if !h.key.eq_ignore_ascii_case("host") {
@@ -253,7 +261,10 @@ async fn forward_to_upstream(
         .body(Full::new(body_bytes))
         .map_err(|e| format!("Falha ao construir requisicao upstream: {}", e))?;
 
-    let res = sender.send_request(req).await.map_err(|e| format!("Falha ao enviar requisicao upstream: {}", e))?;
+    let res = sender
+        .send_request(req)
+        .await
+        .map_err(|e| format!("Falha ao enviar requisicao upstream: {}", e))?;
     let status = res.status();
 
     let mut res_headers = Vec::new();
@@ -264,7 +275,12 @@ async fn forward_to_upstream(
         });
     }
 
-    let res_body_bytes = res.into_body().collect().await.map_err(|e| format!("Falha ao coletar body upstream: {}", e))?.to_bytes();
+    let res_body_bytes = res
+        .into_body()
+        .collect()
+        .await
+        .map_err(|e| format!("Falha ao coletar body upstream: {}", e))?
+        .to_bytes();
 
     Ok((status, res_headers, res_body_bytes))
 }

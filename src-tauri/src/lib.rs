@@ -2,10 +2,10 @@ pub mod commands;
 pub mod proxy;
 pub mod state;
 
-use std::sync::Arc;
 use commands::AppState;
 use parking_lot::Mutex;
 use state::SessionState;
+use std::sync::Arc;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
