@@ -15,10 +15,10 @@ use tokio::sync::watch;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use crate::commands::AppState;
 use super::recorder::{
     HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig,
 };
+use crate::commands::AppState;
 
 pub struct ProxyServer {
     config: ProxyConfig,
@@ -376,7 +376,8 @@ mod tests {
             value: "relay-unit-test".to_string(),
         }];
 
-        let result = forward_to_upstream(&method, "/api/test", &headers, Bytes::new(), &config).await;
+        let result =
+            forward_to_upstream(&method, "/api/test", &headers, Bytes::new(), &config).await;
 
         assert!(result.is_ok());
         let (status, resp_headers, body) = result.unwrap();
