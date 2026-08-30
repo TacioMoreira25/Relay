@@ -1,5 +1,6 @@
 <script lang="ts">
   import { relayState } from "$lib/stores/traffic.svelte";
+  import { invoke } from "@tauri-apps/api/core";
 
   let { isOpen = $bindable(false) }: { isOpen: boolean } = $props();
 
@@ -8,11 +9,19 @@
   let tempTargetPort = $state(relayState.config.targetPort);
   let tempLatencyMs = $state(relayState.config.latencyMs);
 
-  function saveConfig(): void {
+  async function saveConfig(): Promise<void> {
     relayState.config.listenPort = Number(tempListenPort);
     relayState.config.targetHost = tempTargetHost.trim();
     relayState.config.targetPort = Number(tempTargetPort);
     relayState.config.latencyMs = Number(tempLatencyMs);
+
+    // Sincroniza dinamicamente com o backend Rust
+    try {
+      await invoke("update_proxy_config", { config: relayState.config });
+    } catch (e) {
+      console.error("Erro ao atualizar config no Rust:", e);
+    }
+
     isOpen = false;
   }
 
@@ -98,7 +107,7 @@
             placeholder="0"
             class="w-full bg-zinc-950 border border-zinc-800 rounded px-3 py-1.5 text-zinc-200 font-mono focus:outline-none focus:border-indigo-500"
           />
-          <span class="text-[10px] text-zinc-500 mt-1 block">0 = repasse instantâneo sem delay.</span>
+          <span class="text-[10px] text-zinc-500 mt-1 block">Ajuste em tempo real sem precisar reiniciar o proxy.</span>
         </div>
       </div>
 

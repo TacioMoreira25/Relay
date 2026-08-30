@@ -6,29 +6,54 @@
   import { relayState } from "$lib/stores/traffic.svelte";
   import type { HttpExchange, InterceptedResponse } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
-  import { listen } from "@tauri-apps/api/event";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
   let isConfigOpen = $state(false);
 
+  async function fetchExchangesFromBackend(): Promise<void> {
+    try {
+      const items = await invoke<HttpExchange[]>("get_exchanges");
+      if (items && items.length > 0) {
+        // Inverte para ter os mais recentes no topo
+        relayState.exchanges = items.slice().reverse();
+      }
+    } catch (e) {
+      console.warn("Falha ao sincronizar exchanges iniciais:", e);
+    }
+  }
+
   onMount(() => {
-    // Escuta eventos assíncronos de requisições emitidos pelo motor Rust
-    const unlistenReq = listen<HttpExchange>("relay:request", (event) => {
+    let unlistenReq: UnlistenFn | undefined;
+    let unlistenRes: UnlistenFn | undefined;
+    let unlistenErr: UnlistenFn | undefined;
+
+    // Sincroniza estado inicial do backend
+    fetchExchangesFromBackend();
+
+    // Registra os listeners IPC do Tauri v2
+    listen<HttpExchange>("relay:request", (event) => {
       relayState.addExchange(event.payload);
+    }).then((fn) => {
+      unlistenReq = fn;
     });
 
-    const unlistenRes = listen<InterceptedResponse>("relay:response", (event) => {
+    listen<InterceptedResponse>("relay:response", (event) => {
       relayState.updateResponse(event.payload.requestId, event.payload);
+    }).then((fn) => {
+      unlistenRes = fn;
     });
 
-    const unlistenErr = listen<{ requestId: string; error: string }>("relay:error", (event) => {
+    listen<{ requestId: string; error: string }>("relay:error", (event) => {
       relayState.setError(event.payload.requestId, event.payload.error);
+    }).then((fn) => {
+      unlistenErr = fn;
     });
 
     return () => {
-      unlistenReq.then((f) => f());
-      unlistenRes.then((f) => f());
-      unlistenErr.then((f) => f());
+      unlistenReq?.();
+      unlistenRes?.();
+      unlistenErr?.();
     };
   });
 

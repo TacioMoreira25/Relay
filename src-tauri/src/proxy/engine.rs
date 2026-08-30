@@ -9,12 +9,13 @@ use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response, StatusCode};
 use hyper_util::rt::TokioIo;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
+use crate::commands::AppState;
 use super::recorder::{
     HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig,
 };
@@ -39,10 +40,9 @@ impl ProxyServer {
         let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
         self.shutdown_tx = Some(shutdown_tx);
 
-        let config = Arc::new(self.config.clone());
         let app = Arc::new(app_handle);
 
-        info!("Proxy iniciado em http://{}", addr);
+        info!("Proxy iniciado com sucesso em http://{}", addr);
 
         tokio::spawn(async move {
             loop {
@@ -52,14 +52,12 @@ impl ProxyServer {
                             Ok((stream, _remote_addr)) => {
                                 let io = TokioIo::new(stream);
                                 let app_clone = Arc::clone(&app);
-                                let config_clone = Arc::clone(&config);
 
                                 tokio::spawn(async move {
                                     let service = service_fn(move |req| {
                                         let app = Arc::clone(&app_clone);
-                                        let cfg = Arc::clone(&config_clone);
                                         async move {
-                                            handle_proxy_request(req, app, cfg).await
+                                            handle_proxy_request(req, app).await
                                         }
                                     });
 
@@ -69,7 +67,7 @@ impl ProxyServer {
                                         .serve_connection(io, service)
                                         .await
                                     {
-                                        warn!("Conexao de proxy encerrada ou com erro: {:?}", err);
+                                        warn!("Conexao de cliente proxy finalizada: {:?}", err);
                                     }
                                 });
                             }
@@ -102,11 +100,17 @@ impl ProxyServer {
 async fn handle_proxy_request(
     req: Request<hyper::body::Incoming>,
     app: Arc<AppHandle>,
-    config: Arc<ProxyConfig>,
 ) -> Result<Response<BoxBody<Bytes, Infallible>>, Infallible> {
     let req_id = Uuid::new_v4().to_string();
     let start_time = Instant::now();
     let timestamp = chrono::Utc::now().timestamp_millis();
+
+    // Lê a configuração dinâmica em runtime
+    let config = if let Some(state) = app.try_state::<Arc<AppState>>() {
+        state.config.lock().clone()
+    } else {
+        ProxyConfig::default()
+    };
 
     let (parts, incoming_body) = req.into_parts();
 
@@ -126,11 +130,18 @@ async fn handle_proxy_request(
 
     let body_str = String::from_utf8(body_bytes.to_vec()).ok();
 
+    let uri_string = parts
+        .uri
+        .path_and_query()
+        .map(|pq| pq.as_str())
+        .unwrap_or_else(|| parts.uri.path())
+        .to_string();
+
     let intercepted_req = InterceptedRequest {
         id: req_id.clone(),
         timestamp,
         method: parts.method.to_string(),
-        uri: parts.uri.to_string(),
+        uri: uri_string,
         headers: headers_vec.clone(),
         body: body_str.clone(),
         size_bytes: body_bytes.len(),
@@ -144,9 +155,14 @@ async fn handle_proxy_request(
         error: None,
     };
 
-    let _ = app.emit("relay:request", exchange);
+    // Armazena no estado compartilhado em memória
+    if let Some(state) = app.try_state::<Arc<AppState>>() {
+        state.exchanges.lock().push(exchange.clone());
+    }
 
-    // Injeção de latência configurada (Tokio async sleep)
+    let _ = app.emit("relay:request", &exchange);
+
+    // Injeção de latência dinâmica configurada (Tokio async sleep)
     if config.latency_ms > 0 {
         tokio::time::sleep(tokio::time::Duration::from_millis(config.latency_ms)).await;
     }
@@ -183,11 +199,19 @@ async fn handle_proxy_request(
                 duration_ms,
             };
 
-            let _ = app.emit("relay:response", intercepted_res);
+            // Atualiza no estado compartilhado
+            if let Some(state) = app.try_state::<Arc<AppState>>() {
+                let mut exchs = state.exchanges.lock();
+                if let Some(item) = exchs.iter_mut().find(|e| e.id == req_id) {
+                    item.response = Some(intercepted_res.clone());
+                    item.status = "completed".to_string();
+                }
+            }
+
+            let _ = app.emit("relay:response", &intercepted_res);
 
             let mut resp = Response::builder().status(res_status);
             for h in res_headers {
-                // Remove headers hop-by-hop problemáticos em proxies HTTP/1.1
                 if h.key.eq_ignore_ascii_case("transfer-encoding")
                     || h.key.eq_ignore_ascii_case("connection")
                 {
@@ -209,6 +233,14 @@ async fn handle_proxy_request(
             }))
         }
         Err(err_msg) => {
+            if let Some(state) = app.try_state::<Arc<AppState>>() {
+                let mut exchs = state.exchanges.lock();
+                if let Some(item) = exchs.iter_mut().find(|e| e.id == req_id) {
+                    item.status = "failed".to_string();
+                    item.error = Some(err_msg.clone());
+                }
+            }
+
             let _ = app.emit(
                 "relay:error",
                 serde_json::json!({
@@ -254,7 +286,6 @@ async fn forward_to_upstream(
     let mut builder = Request::builder().method(method).uri(path_and_query);
 
     for h in headers {
-        // Ignora o host da requisição original e cabeçalhos de salto
         if !h.key.eq_ignore_ascii_case("host")
             && !h.key.eq_ignore_ascii_case("connection")
             && !h.key.eq_ignore_ascii_case("transfer-encoding")

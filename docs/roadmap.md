@@ -17,9 +17,11 @@ Este documento define o plano de entrega do Relay, partindo do MVP até a maturi
 - [x] Teste unitário automatizado do repasse HTTP assíncrono com mock listener Tokio.
 
 ### 🔹 Fase 3: Interceptador & Streaming de Tráfego em Tempo Real
-- [ ] Captura de headers, método, URI e corpo da requisição sem bloqueio do stream.
-- [ ] Streaming de eventos `relay:request` e `relay:response` para a interface desktop.
-- [ ] Renderização virtualizada da lista de tráfego na UI com filtros por método HTTP e busca por texto.
+- [x] Captura de headers, método, URI e corpo da requisição sem bloqueio do stream assíncrono.
+- [x] Streaming de eventos `relay:request`, `relay:response` e `relay:error` para a interface desktop via IPC.
+- [x] Renderização reativa de alto desempenho no `RequestList.svelte` com filtros por método HTTP (GET, POST, PUT, DELETE, PATCH).
+- [x] Filtros em tempo real por faixa de Status Code (2xx, 3xx, 4xx, 5xx, ERR) e busca global de texto em URIs e bodies.
+- [x] Auto-formatação e identação inteligente de JSON no `Inspector.svelte` com botões rápidos de cópia para a área de transferência.
 
 ### 🔹 Fase 4: Auto-Detecção & Gerenciador de Sessão JWT
 - [ ] Parser regex/heurístico de tokens JWT em headers (`Authorization: Bearer ...`) e payloads de resposta.

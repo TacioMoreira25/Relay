@@ -1,4 +1,4 @@
-import type { HttpExchange, ExtractedJwt, ProxyConfig } from "$lib/types";
+import type { HttpExchange, ExtractedJwt, ProxyConfig, HttpMethod } from "$lib/types";
 
 class RelayState {
   exchanges = $state<HttpExchange[]>([]);
@@ -6,6 +6,11 @@ class RelayState {
   jwts = $state<ExtractedJwt[]>([]);
   isProxyRunning = $state<boolean>(false);
   
+  // Filtros de Tráfego
+  searchQuery = $state<string>("");
+  methodFilter = $state<string>("ALL");
+  statusFilter = $state<string>("ALL"); // "ALL", "2xx", "3xx", "4xx", "5xx", "ERR"
+
   config = $state<ProxyConfig>({
     listenPort: 8080,
     targetHost: "127.0.0.1",
@@ -15,9 +20,48 @@ class RelayState {
     autoExtractJwt: true,
   });
 
-  // Derived
+  // Derived - Estatísticas
   totalRequests = $derived(this.exchanges.length);
-  failedRequests = $derived(this.exchanges.filter(e => e.status === "failed" || (e.response && e.response.statusCode >= 400)).length);
+  failedRequests = $derived(
+    this.exchanges.filter(e => e.status === "failed" || (e.response && e.response.statusCode >= 400)).length
+  );
+
+  // Derived - Lista Filtrada em Tempo Real
+  filteredExchanges = $derived(
+    this.exchanges.filter(e => {
+      // Filtro por método HTTP
+      if (this.methodFilter !== "ALL" && e.request.method.toUpperCase() !== this.methodFilter) {
+        return false;
+      }
+
+      // Filtro por Status Code
+      if (this.statusFilter !== "ALL") {
+        if (this.statusFilter === "ERR") {
+          if (e.status !== "failed" && (!e.response || e.response.statusCode < 400)) return false;
+        } else if (this.statusFilter === "2xx") {
+          if (!e.response || e.response.statusCode < 200 || e.response.statusCode >= 300) return false;
+        } else if (this.statusFilter === "3xx") {
+          if (!e.response || e.response.statusCode < 300 || e.response.statusCode >= 400) return false;
+        } else if (this.statusFilter === "4xx") {
+          if (!e.response || e.response.statusCode < 400 || e.response.statusCode >= 500) return false;
+        } else if (this.statusFilter === "5xx") {
+          if (!e.response || e.response.statusCode < 500) return false;
+        }
+      }
+
+      // Filtro por Texto / URI / Headers
+      if (this.searchQuery.trim()) {
+        const query = this.searchQuery.toLowerCase().trim();
+        const matchUri = e.request.uri.toLowerCase().includes(query);
+        const matchMethod = e.request.method.toLowerCase().includes(query);
+        const matchBody = e.request.body?.toLowerCase().includes(query) ?? false;
+        const matchResBody = e.response?.body?.toLowerCase().includes(query) ?? false;
+        return matchUri || matchMethod || matchBody || matchResBody;
+      }
+
+      return true;
+    })
+  );
 
   // Actions
   addExchange(exchange: HttpExchange): void {
