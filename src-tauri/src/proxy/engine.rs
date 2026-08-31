@@ -98,6 +98,25 @@ impl ProxyServer {
     }
 }
 
+pub fn resolve_route_target(uri_path: &str, config: &ProxyConfig) -> (String, u16, u64) {
+    let clean_path = uri_path.split('?').next().unwrap_or(uri_path);
+
+    for rule in &config.routes {
+        let prefix = rule.path_prefix.trim_end_matches('*');
+        if clean_path.starts_with(prefix) {
+            let host = rule
+                .target_host
+                .as_ref()
+                .cloned()
+                .unwrap_or_else(|| config.target_host.clone());
+            let latency = rule.latency_ms.unwrap_or(config.latency_ms);
+            return (host, rule.target_port, latency);
+        }
+    }
+
+    (config.target_host.clone(), config.target_port, config.latency_ms)
+}
+
 async fn handle_proxy_request(
     req: Request<hyper::body::Incoming>,
     app: Arc<AppHandle>,
@@ -146,7 +165,7 @@ async fn handle_proxy_request(
         id: req_id.clone(),
         timestamp,
         method: parts.method.to_string(),
-        uri: uri_string,
+        uri: uri_string.clone(),
         headers: headers_vec.clone(),
         body: body_str.clone(),
         size_bytes: body_bytes.len(),
@@ -178,8 +197,12 @@ async fn handle_proxy_request(
 
     let _ = app.emit("relay:request", &exchange);
 
+    // Resolução de Rota Dinâmica (Suporta qualquer rota e múltiplos microservices)
+    let (target_host, target_port, route_latency_ms) =
+        resolve_route_target(&uri_string, &config);
+
     // Injeção de latência dinâmica configurada com Jitter (Chaos Engineering)
-    let total_delay_ms = calculate_delay(config.latency_ms, config.jitter_ms);
+    let total_delay_ms = calculate_delay(route_latency_ms, config.jitter_ms);
     if total_delay_ms > 0 {
         tokio::time::sleep(tokio::time::Duration::from_millis(total_delay_ms)).await;
     }
@@ -248,7 +271,8 @@ async fn handle_proxy_request(
         path_and_query,
         &headers_vec,
         body_bytes,
-        &config,
+        &target_host,
+        target_port,
     )
     .await;
 
@@ -357,7 +381,6 @@ pub fn calculate_delay(base_latency_ms: u64, jitter_ms: u64) -> u64 {
     if jitter_ms == 0 {
         return base_latency_ms;
     }
-    // Adiciona jitter aleatório entre 0 e jitter_ms
     let random_jitter = fastrand::u64(0..=jitter_ms);
     base_latency_ms.saturating_add(random_jitter)
 }
@@ -377,9 +400,10 @@ async fn forward_to_upstream(
     path_and_query: &str,
     headers: &[HeaderEntry],
     body_bytes: Bytes,
-    config: &ProxyConfig,
+    target_host: &str,
+    target_port: u16,
 ) -> Result<(StatusCode, Vec<HeaderEntry>, Bytes), String> {
-    let target_addr = format!("{}:{}", config.target_host, config.target_port);
+    let target_addr = format!("{}:{}", target_host, target_port);
     let stream = TcpStream::connect(&target_addr)
         .await
         .map_err(|e| format!("Falha ao conectar com o upstream ({}): {}", target_addr, e))?;
@@ -442,12 +466,36 @@ async fn forward_to_upstream(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::proxy::recorder::RouteRule;
     use http_body_util::Full;
     use hyper::service::service_fn;
     use hyper::{Response, StatusCode};
     use hyper_util::rt::TokioIo;
     use std::convert::Infallible;
     use tokio::net::TcpListener;
+
+    #[test]
+    fn test_resolve_route_target() {
+        let mut config = ProxyConfig::default();
+        config.target_host = "127.0.0.1".to_string();
+        config.target_port = 3000;
+        config.latency_ms = 10;
+
+        config.routes.push(RouteRule {
+            path_prefix: "/api/v1/auth".to_string(),
+            target_host: Some("127.0.0.1".to_string()),
+            target_port: 4000,
+            latency_ms: Some(50),
+        });
+
+        let (_host, port, latency) = resolve_route_target("/api/v1/auth/login", &config);
+        assert_eq!(port, 4000);
+        assert_eq!(latency, 50);
+
+        let (_def_host, def_port, def_lat) = resolve_route_target("/api/v1/users", &config);
+        assert_eq!(def_port, 3000);
+        assert_eq!(def_lat, 10);
+    }
 
     #[test]
     fn test_calculate_delay_jitter() {
@@ -488,25 +536,21 @@ mod tests {
             }
         });
 
-        let config = ProxyConfig {
-            listen_port: 0,
-            target_host: "127.0.0.1".to_string(),
-            target_port: port,
-            latency_ms: 0,
-            jitter_ms: 0,
-            simulate_failure_rate: 0.0,
-            failure_status_code: 500,
-            auto_extract_jwt: false,
-        };
-
         let method = hyper::Method::GET;
         let headers = vec![HeaderEntry {
             key: "user-agent".to_string(),
             value: "relay-unit-test".to_string(),
         }];
 
-        let result =
-            forward_to_upstream(&method, "/api/test", &headers, Bytes::new(), &config).await;
+        let result = forward_to_upstream(
+            &method,
+            "/api/test",
+            &headers,
+            Bytes::new(),
+            "127.0.0.1",
+            port,
+        )
+        .await;
 
         assert!(result.is_ok());
         let (status, resp_headers, body) = result.unwrap();

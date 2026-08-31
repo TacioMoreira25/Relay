@@ -32,7 +32,6 @@ pub fn run() {
     tauri::Builder::default()
         .manage(app_state)
         .setup(|app| {
-            // Criação do Menu de contexto da bandeja (System Tray) para Linux / KDE Plasma
             let toggle_i = MenuItem::with_id(
                 app,
                 "toggle_window",
@@ -90,6 +89,8 @@ pub fn run() {
             commands::start_proxy,
             commands::stop_proxy,
             commands::update_proxy_config,
+            commands::get_proxy_config,
+            commands::load_config_from_json,
             commands::get_session_jwts,
             commands::clear_session_jwts,
             commands::get_exchanges,

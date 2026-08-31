@@ -1,6 +1,7 @@
 <script lang="ts">
   import { relayState } from "$lib/stores/traffic.svelte";
   import type { HeaderEntry, HttpExchange, HttpMethod } from "$lib/types";
+  import { IconPlay, IconKey } from "$lib/components/icons";
   import { invoke } from "@tauri-apps/api/core";
 
   let { isOpen = $bindable(false), exchange = null }: { isOpen: boolean; exchange: HttpExchange | null } = $props();
@@ -82,9 +83,8 @@
     <div class="bg-zinc-900 border border-zinc-800 rounded-xl max-w-2xl w-full p-5 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-zinc-800 pb-3 select-none">
-        <h3 class="text-sm font-semibold text-zinc-100 flex items-center space-x-2">
-          <span>🔁</span>
-          <span>HTTP Client & Replay de Chamada</span>
+        <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-100 flex items-center space-x-2">
+          <span>HTTP Client & Replay</span>
         </h3>
         <button
           onclick={() => (isOpen = false)}
@@ -105,11 +105,11 @@
 
           <button
             onclick={injectLatestJwt}
-            class="text-[11px] px-2.5 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20 transition-all flex items-center space-x-1"
+            class="text-[11px] px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-all flex items-center space-x-1.5 cursor-pointer"
             title="Injeta o token JWT mais recente no header Authorization"
           >
-            <span>🛡️</span>
-            <span>Auto-Injetar JWT da Sessão</span>
+            <IconKey size={12} class="text-amber-400" />
+            <span>Auto-Injetar JWT</span>
           </button>
         </div>
 
@@ -123,7 +123,7 @@
         <div class="flex items-center space-x-2">
           <select
             bind:value={method}
-            class="bg-zinc-950 border border-zinc-800 rounded px-2.5 py-2 text-xs font-mono font-bold text-zinc-200 focus:outline-none focus:border-indigo-500"
+            class="bg-zinc-950 border border-zinc-800 rounded px-2.5 py-2 text-xs font-mono font-bold text-zinc-200 focus:outline-none focus:border-indigo-500 cursor-pointer"
           >
             <option value="GET">GET</option>
             <option value="POST">POST</option>
@@ -148,7 +148,7 @@
             <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">Headers HTTP ({headers.length})</span>
             <button
               onclick={addHeader}
-              class="text-[11px] px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+              class="text-[11px] px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
             >
               + Adicionar Header
             </button>
@@ -159,7 +159,7 @@
               <div class="flex items-center space-x-2">
                 <input
                   type="text"
-                  placeholder="Header (ex: Authorization)"
+                  placeholder="Header"
                   bind:value={h.key}
                   class="w-1/3 bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
                 />
@@ -171,7 +171,7 @@
                 />
                 <button
                   onclick={() => removeHeader(idx)}
-                  class="text-zinc-500 hover:text-rose-400 p-1 text-xs"
+                  class="text-zinc-500 hover:text-rose-400 p-1 text-xs cursor-pointer"
                 >
                   ✕
                 </button>
@@ -196,17 +196,17 @@
       <div class="flex items-center justify-end space-x-2 pt-3 border-t border-zinc-800 select-none">
         <button
           onclick={() => (isOpen = false)}
-          class="text-xs px-3.5 py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+          class="text-xs px-3.5 py-2 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
         >
           Cancelar
         </button>
         <button
           onclick={sendReplay}
           disabled={isSending}
-          class="text-xs px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-sm flex items-center space-x-2 disabled:opacity-50 cursor-pointer"
+          class="text-xs px-4 py-2 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-xs flex items-center space-x-2 disabled:opacity-50 cursor-pointer"
         >
-          <span>⚡</span>
-          <span>{isSending ? "Disparando Chamada..." : "Executar Replay"}</span>
+          <IconPlay size={12} class="fill-current" />
+          <span>{isSending ? "Disparando..." : "Executar Replay"}</span>
         </button>
       </div>
     </div>

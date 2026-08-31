@@ -1,10 +1,19 @@
 <script lang="ts">
   import RequestList from "$lib/components/RequestList.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
-  import TestTrigger from "$lib/components/TestTrigger.svelte";
   import ProxyConfigModal from "$lib/components/ProxyConfigModal.svelte";
   import ExportModal from "$lib/components/ExportModal.svelte";
+  import TipsModal from "$lib/components/TipsModal.svelte";
   import JwtManager from "$lib/components/JwtManager.svelte";
+  import {
+    IconActivity,
+    IconShield,
+    IconSettings,
+    IconDownload,
+    IconPlay,
+    IconSquare,
+    IconHelpCircle,
+  } from "$lib/components/icons";
   import { relayState } from "$lib/stores/traffic.svelte";
   import type { HttpExchange, InterceptedResponse, ExtractedJwt } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
@@ -13,6 +22,7 @@
 
   let isConfigOpen = $state(false);
   let isExportOpen = $state(false);
+  let isTipsOpen = $state(false);
 
   async function syncInitialState(): Promise<void> {
     try {
@@ -45,27 +55,23 @@
   }
 
   function handleKeyDown(event: KeyboardEvent): void {
-    // Atalho: Ctrl+K / Cmd+K -> Focar campo de busca
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
       event.preventDefault();
       const searchInput = document.querySelector<HTMLInputElement>('input[type="text"]');
       searchInput?.focus();
-    }
-    // Atalho: Ctrl+L / Cmd+L -> Limpar lista de tráfego
-    else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
+    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
       event.preventDefault();
       invoke("clear_exchanges");
       relayState.clear();
-    }
-    // Atalho: Ctrl+P / Cmd+P -> Iniciar / Parar Proxy
-    else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
+    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
       event.preventDefault();
       toggleProxy();
-    }
-    // Atalho: Ctrl+E / Cmd+E -> Abrir Exportação & HTTPS
-    else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "e") {
+    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "e") {
       event.preventDefault();
       isExportOpen = true;
+    } else if ((event.ctrlKey || event.metaKey) && (event.key === "/" || event.key === "?")) {
+      event.preventDefault();
+      isTipsOpen = true;
     }
   }
 
@@ -75,35 +81,24 @@
     let unlistenErr: UnlistenFn | undefined;
     let unlistenJwt: UnlistenFn | undefined;
 
-    // Sincroniza estado inicial do backend
     syncInitialState();
-
     window.addEventListener("keydown", handleKeyDown);
 
-    // Registra os listeners IPC do Tauri v2
     listen<HttpExchange>("relay:request", (event) => {
       relayState.addExchange(event.payload);
-    }).then((fn) => {
-      unlistenReq = fn;
-    });
+    }).then((fn) => (unlistenReq = fn));
 
     listen<InterceptedResponse>("relay:response", (event) => {
       relayState.updateResponse(event.payload.requestId, event.payload);
-    }).then((fn) => {
-      unlistenRes = fn;
-    });
+    }).then((fn) => (unlistenRes = fn));
 
     listen<{ requestId: string; error: string }>("relay:error", (event) => {
       relayState.setError(event.payload.requestId, event.payload.error);
-    }).then((fn) => {
-      unlistenErr = fn;
-    });
+    }).then((fn) => (unlistenErr = fn));
 
     listen<ExtractedJwt>("relay:jwt", (event) => {
       relayState.addJwt(event.payload);
-    }).then((fn) => {
-      unlistenJwt = fn;
-    });
+    }).then((fn) => (unlistenJwt = fn));
 
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
@@ -115,28 +110,26 @@
   });
 </script>
 
-<main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 font-sans select-none">
-  <!-- Top Bar -->
-  <header class="h-12 border-b border-zinc-800 bg-zinc-900/80 px-4 flex items-center justify-between">
-    <div class="flex items-center space-x-6">
-      <div class="flex items-center space-x-3">
-        <div class="flex items-center space-x-1.5 font-bold tracking-tight text-white">
-          <div class="w-3 h-3 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.8)]"></div>
-          <span class="text-sm">RELAY</span>
-        </div>
-        <span class="text-xs text-zinc-500 hidden sm:inline">| Native HTTP Interceptor & Replay</span>
+<main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-200 font-sans select-none antialiased">
+  <!-- Minimalist Top Bar -->
+  <header class="h-11 border-b border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md px-3 flex items-center justify-between">
+    <!-- Brand & Navigation -->
+    <div class="flex items-center space-x-5">
+      <div class="flex items-center space-x-2">
+        <div class="w-2.5 h-2.5 rounded-full {relayState.isProxyRunning ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse' : 'bg-zinc-600'}"></div>
+        <span class="text-xs font-bold tracking-wider text-zinc-100 uppercase">Relay</span>
       </div>
 
-      <!-- Navigation Tabs (Traffic vs JWT Session) -->
-      <div class="flex items-center space-x-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs">
+      <!-- Segmented View Tabs -->
+      <nav class="flex items-center space-x-1 bg-zinc-950/80 p-0.5 rounded-md border border-zinc-800/80 text-xs">
         <button
           onclick={() => (relayState.activeView = "traffic")}
-          class="px-3 py-1 rounded transition-colors flex items-center space-x-1.5 {relayState.activeView === 'traffic' ? 'bg-zinc-800 text-white font-medium shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="px-2.5 py-1 rounded transition-all flex items-center space-x-1.5 {relayState.activeView === 'traffic' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
         >
-          <span>🌐</span>
-          <span>Tráfego HTTP</span>
+          <IconActivity size={13} />
+          <span>Tráfego</span>
           {#if relayState.totalRequests > 0}
-            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-700 text-zinc-300 font-mono">
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-700/80 text-zinc-300 font-mono">
               {relayState.totalRequests}
             </span>
           {/if}
@@ -144,74 +137,89 @@
 
         <button
           onclick={() => (relayState.activeView = "jwt")}
-          class="px-3 py-1 rounded transition-colors flex items-center space-x-1.5 {relayState.activeView === 'jwt' ? 'bg-zinc-800 text-white font-medium shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="px-2.5 py-1 rounded transition-all flex items-center space-x-1.5 {relayState.activeView === 'jwt' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
         >
-          <span>🛡️</span>
+          <IconShield size={13} />
           <span>Sessão & JWT</span>
           {#if relayState.totalJwts > 0}
-            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-600/60 text-indigo-200 font-mono">
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-500/30 text-indigo-300 font-mono font-medium">
               {relayState.totalJwts}
             </span>
           {/if}
         </button>
-      </div>
+      </nav>
     </div>
 
-    <!-- Proxy Controls, Port Badge & Test Trigger -->
-    <div class="flex items-center space-x-3">
-      <!-- Export & CA Trigger Button -->
-      <button
-        onclick={() => (isExportOpen = true)}
-        class="text-xs px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium flex items-center space-x-1.5 transition-colors border border-zinc-700/60 cursor-pointer"
-        title="Exportar HAR / OpenAPI ou Gerar Certificado HTTPS CA (Atalho: Ctrl+E)"
-      >
-        <span>📦</span>
-        <span class="hidden md:inline">Exportar / HTTPS</span>
-      </button>
-
+    <!-- Actions & Controls -->
+    <div class="flex items-center space-x-2">
+      <!-- Route Config Button -->
       <button
         onclick={() => (isConfigOpen = true)}
-        class="flex items-center space-x-2 text-xs font-mono bg-zinc-800/80 hover:bg-zinc-800 px-2.5 py-1 rounded border border-zinc-700/60 transition-colors cursor-pointer"
-        title="Clique para configurar portas, latência, jitter e taxa de falhas"
+        class="flex items-center space-x-2 text-[11px] font-mono bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 px-2.5 py-1 rounded-md text-zinc-300 transition-colors cursor-pointer"
+        title="Configurações de portas, rotas e chaos simulator"
       >
-        <span class="text-zinc-400">127.0.0.1:{relayState.config.listenPort}</span>
-        <span class="text-zinc-600">➔</span>
+        <IconSettings size={13} class="text-zinc-400" />
+        <span class="text-zinc-400">:{relayState.config.listenPort}</span>
+        <span class="text-zinc-600">→</span>
         <span class="text-indigo-400">{relayState.config.targetHost}:{relayState.config.targetPort}</span>
         {#if relayState.config.latencyMs > 0 || relayState.config.jitterMs > 0}
-          <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-sans">
+          <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-sans">
             +{relayState.config.latencyMs}{relayState.config.jitterMs > 0 ? `±${relayState.config.jitterMs}` : ""}ms
           </span>
         {/if}
         {#if relayState.config.simulateFailureRate > 0}
-          <span class="text-[10px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-sans font-bold">
+          <span class="text-[10px] px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20 font-sans font-medium">
             {Math.round(relayState.config.simulateFailureRate * 100)}% {relayState.config.failureStatusCode}
           </span>
         {/if}
       </button>
 
-      <TestTrigger />
+      <!-- Export / HTTPS Button -->
+      <button
+        onclick={() => (isExportOpen = true)}
+        class="text-xs px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-colors flex items-center space-x-1.5 cursor-pointer"
+        title="Exportar HAR / OpenAPI ou Gerenciar Certificados (Ctrl+E)"
+      >
+        <IconDownload size={13} />
+        <span class="hidden md:inline text-[11px]">Exportar</span>
+      </button>
 
+      <!-- Tips & Shortcuts Button -->
+      <button
+        onclick={() => (isTipsOpen = true)}
+        class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+        title="Guia de Dicas & Atalhos de Teclado (Ctrl+/)"
+      >
+        <IconHelpCircle size={14} />
+      </button>
+
+      <!-- Primary Toggle Proxy Button -->
       <button
         onclick={toggleProxy}
-        class="text-xs px-3 py-1.5 rounded font-medium flex items-center space-x-1.5 transition-all {relayState.isProxyRunning ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-500'}"
+        class="text-xs px-3 py-1 rounded-md font-medium flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer {relayState.isProxyRunning ? 'bg-rose-500/10 text-rose-300 border border-rose-500/30 hover:bg-rose-500/20' : 'bg-indigo-600 text-white hover:bg-indigo-500'}"
         title="Atalho: Ctrl+P"
       >
-        <span class="w-2 h-2 rounded-full {relayState.isProxyRunning ? 'bg-rose-400 animate-ping' : 'bg-white'}"></span>
-        <span>{relayState.isProxyRunning ? "Parar Proxy" : "Iniciar Proxy"}</span>
+        {#if relayState.isProxyRunning}
+          <IconSquare size={12} class="text-rose-400" />
+          <span>Parar</span>
+        {:else}
+          <IconPlay size={12} class="fill-current" />
+          <span>Iniciar</span>
+        {/if}
       </button>
     </div>
   </header>
 
-  <!-- Main View Content Switcher -->
+  <!-- Main View Content Area -->
   <div class="flex-1 flex overflow-hidden">
     {#if relayState.activeView === "traffic"}
       <!-- Left Column: Request List -->
-      <div class="w-80 border-r border-zinc-800 h-full">
+      <div class="w-80 border-r border-zinc-800/80 h-full bg-zinc-950">
         <RequestList />
       </div>
 
       <!-- Right Column: Inspector -->
-      <div class="flex-1 h-full">
+      <div class="flex-1 h-full bg-zinc-950">
         <Inspector />
       </div>
     {:else}
@@ -223,4 +231,5 @@
   <!-- Modals -->
   <ProxyConfigModal bind:isOpen={isConfigOpen} />
   <ExportModal bind:isOpen={isExportOpen} />
+  <TipsModal bind:isOpen={isTipsOpen} />
 </main>

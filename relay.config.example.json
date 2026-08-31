@@ -1,0 +1,22 @@
+{
+  "listenPort": 8080,
+  "targetHost": "127.0.0.1",
+  "targetPort": 3000,
+  "latencyMs": 0,
+  "jitterMs": 0,
+  "simulateFailureRate": 0.0,
+  "failureStatusCode": 500,
+  "autoExtractJwt": true,
+  "routes": [
+    {
+      "pathPrefix": "/api/v1/auth",
+      "targetHost": "127.0.0.1",
+      "targetPort": 4000
+    },
+    {
+      "pathPrefix": "/api/v1/billing",
+      "targetHost": "127.0.0.1",
+      "targetPort": 5000
+    }
+  ]
+}

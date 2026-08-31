@@ -1,6 +1,7 @@
 <script lang="ts">
   import { relayState } from "$lib/stores/traffic.svelte";
   import type { GeneratedCa } from "$lib/types";
+  import { IconFileJson, IconShield, IconDownload, IconKey } from "$lib/components/icons";
   import { invoke } from "@tauri-apps/api/core";
 
   let { isOpen = $bindable(false) }: { isOpen: boolean } = $props();
@@ -81,12 +82,12 @@
     <div class="bg-zinc-900 border border-zinc-800 rounded-xl max-w-xl w-full p-5 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
       <!-- Modal Header -->
       <div class="flex items-center justify-between border-b border-zinc-800 pb-3 select-none">
-        <div class="flex items-center space-x-2">
-          <span class="text-sm font-semibold text-zinc-100">Exportação & HTTPS MITM</span>
-        </div>
+        <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-100">
+          Exportação & HTTPS MITM
+        </h3>
         <button
           onclick={() => (isOpen = false)}
-          class="text-zinc-500 hover:text-zinc-300 text-xs p-1"
+          class="text-zinc-500 hover:text-zinc-300 text-xs p-1 cursor-pointer"
         >
           ✕
         </button>
@@ -96,15 +97,17 @@
       <div class="flex space-x-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800 text-xs select-none">
         <button
           onclick={() => (activeTab = "export")}
-          class="flex-1 py-1.5 rounded transition-colors text-center font-medium {activeTab === 'export' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="flex-1 py-1.5 rounded transition-colors text-center font-medium flex items-center justify-center space-x-1.5 cursor-pointer {activeTab === 'export' ? 'bg-zinc-800 text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
         >
-          📦 Exportar Tráfego (HAR / OpenAPI)
+          <IconFileJson size={13} />
+          <span>Exportar Tráfego (HAR / OpenAPI)</span>
         </button>
         <button
           onclick={() => (activeTab = "https")}
-          class="flex-1 py-1.5 rounded transition-colors text-center font-medium {activeTab === 'https' ? 'bg-zinc-800 text-white shadow-sm' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="flex-1 py-1.5 rounded transition-colors text-center font-medium flex items-center justify-center space-x-1.5 cursor-pointer {activeTab === 'https' ? 'bg-zinc-800 text-white shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
         >
-          🔒 Certificados HTTPS / CA
+          <IconShield size={13} />
+          <span>Certificados HTTPS / CA</span>
         </button>
       </div>
 
@@ -116,7 +119,7 @@
 
       <!-- Tab 1: Export Content -->
       {#if activeTab === "export"}
-        <div class="flex-1 space-y-4 text-xs">
+        <div class="flex-1 space-y-3 text-xs">
           <div class="p-3.5 bg-zinc-950 border border-zinc-800 rounded-lg space-y-2">
             <div class="flex items-center justify-between">
               <div>
@@ -128,9 +131,10 @@
               <button
                 onclick={handleExportHar}
                 disabled={relayState.totalRequests === 0}
-                class="px-3.5 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors shadow-sm disabled:opacity-40 cursor-pointer"
+                class="px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors shadow-xs disabled:opacity-40 cursor-pointer flex items-center space-x-1.5"
               >
-                Exportar HAR
+                <IconDownload size={12} />
+                <span>Exportar HAR</span>
               </button>
             </div>
             <div class="text-[10px] text-zinc-500 font-mono">
@@ -143,15 +147,16 @@
               <div>
                 <h4 class="font-bold text-zinc-200 text-xs">Especificação OpenAPI 3.0 (Swagger)</h4>
                 <p class="text-[11px] text-zinc-400">
-                  Gera documentação viva de endpoints e métodos REST observados em tempo de execução.
+                  Gera documentação viva de endpoints REST observados em tempo de execução.
                 </p>
               </div>
               <button
                 onclick={handleExportOpenApi}
                 disabled={relayState.totalRequests === 0}
-                class="px-3.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium transition-colors shadow-sm disabled:opacity-40 cursor-pointer border border-zinc-700"
+                class="px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-medium transition-colors shadow-xs disabled:opacity-40 cursor-pointer border border-zinc-700 flex items-center space-x-1.5"
               >
-                Exportar OpenAPI
+                <IconFileJson size={12} />
+                <span>Exportar OpenAPI</span>
               </button>
             </div>
             <div class="text-[10px] text-zinc-500 font-mono">
@@ -161,7 +166,7 @@
         </div>
       {:else}
         <!-- Tab 2: HTTPS CA Generator -->
-        <div class="flex-1 space-y-4 text-xs overflow-y-auto pr-1">
+        <div class="flex-1 space-y-3 text-xs overflow-y-auto pr-1">
           <div class="p-3 bg-zinc-950 border border-zinc-800 rounded-lg space-y-2">
             <h4 class="font-bold text-zinc-200 text-xs">Autoridade Certificadora Local (Root CA)</h4>
             <p class="text-[11px] text-zinc-400 leading-relaxed">
@@ -182,28 +187,29 @@
                 <button
                   onclick={handleGenerateCa}
                   disabled={isGeneratingCa}
-                  class="px-3.5 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors shadow-sm disabled:opacity-50 cursor-pointer"
+                  class="px-3.5 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors shadow-xs disabled:opacity-50 cursor-pointer flex items-center space-x-1.5"
                 >
-                  {isGeneratingCa ? "Gerando..." : "Gerar CA"}
+                  <IconKey size={12} />
+                  <span>{isGeneratingCa ? "Gerando..." : "Gerar CA"}</span>
                 </button>
               </div>
             </div>
           </div>
 
           {#if caCert}
-            <div class="space-y-3 p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
+            <div class="space-y-2.5 p-3 bg-zinc-950 border border-zinc-800 rounded-lg">
               <div class="flex items-center justify-between">
                 <span class="font-bold text-zinc-200 text-xs">Certificado Raiz Gerado</span>
                 <div class="flex space-x-2">
                   <button
                     onclick={() => downloadTextFile(caCert!.certPem, "relay-root-ca.crt")}
-                    class="text-[11px] px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors"
+                    class="text-[11px] px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors cursor-pointer border border-zinc-700"
                   >
                     Baixar .CRT
                   </button>
                   <button
                     onclick={() => downloadTextFile(caCert!.keyPem, "relay-root-ca.key")}
-                    class="text-[11px] px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-rose-300 transition-colors"
+                    class="text-[11px] px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 transition-colors cursor-pointer border border-zinc-700"
                   >
                     Baixar .KEY
                   </button>
@@ -220,7 +226,7 @@
       <div class="flex items-center justify-end pt-3 border-t border-zinc-800 select-none">
         <button
           onclick={() => (isOpen = false)}
-          class="text-xs px-4 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors"
+          class="text-xs px-4 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
         >
           Fechar
         </button>

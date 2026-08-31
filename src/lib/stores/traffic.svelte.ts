@@ -1,4 +1,4 @@
-import type { HttpExchange, ExtractedJwt, ProxyConfig } from "$lib/types";
+import type { HttpExchange, ExtractedJwt, ProxyConfig, RouteRule } from "$lib/types";
 
 class RelayState {
   exchanges = $state<HttpExchange[]>([]);
@@ -22,6 +22,7 @@ class RelayState {
     simulateFailureRate: 0.0,
     failureStatusCode: 500,
     autoExtractJwt: true,
+    routes: [],
   });
 
   // Derived - Estatísticas
@@ -112,6 +113,15 @@ class RelayState {
   clearJwts(): void {
     this.jwts = [];
     this.selectedJwt = null;
+  }
+
+  // Actions - Rotas
+  addRoute(route: RouteRule): void {
+    this.config.routes.push(route);
+  }
+
+  removeRoute(index: number): void {
+    this.config.routes.splice(index, 1);
   }
 }
 

@@ -34,6 +34,13 @@ export interface HttpExchange {
   error?: string;
 }
 
+export interface RouteRule {
+  pathPrefix: string;
+  targetHost?: string;
+  targetPort: number;
+  latencyMs?: number;
+}
+
 export interface ProxyConfig {
   listenPort: number;
   targetHost: string;
@@ -43,6 +50,7 @@ export interface ProxyConfig {
   simulateFailureRate: number; // 0.0 to 1.0 (ex: 0.25 = 25%)
   failureStatusCode: number; // 500, 502, 503, 504
   autoExtractJwt: boolean;
+  routes: RouteRule[];
 }
 
 export interface ExtractedJwt {

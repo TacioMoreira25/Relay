@@ -10,8 +10,8 @@ use tokio::net::TcpStream;
 use uuid::Uuid;
 
 use crate::proxy::{
-    export_to_har, export_to_openapi, generate_root_ca, GeneratedCa, HeaderEntry, HttpExchange,
-    InterceptedRequest, InterceptedResponse, ProxyConfig, ProxyServer,
+    export_to_har, export_to_openapi, generate_root_ca, resolve_route_target, GeneratedCa,
+    HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig, ProxyServer,
 };
 use crate::state::{extract_jwts_from_body, extract_jwts_from_headers, ExtractedJwt, SessionState};
 
@@ -57,6 +57,22 @@ pub async fn update_proxy_config(
 ) -> Result<(), String> {
     *state.config.lock() = config;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn get_proxy_config(state: State<'_, Arc<AppState>>) -> Result<ProxyConfig, String> {
+    Ok(state.config.lock().clone())
+}
+
+#[tauri::command]
+pub async fn load_config_from_json(
+    state: State<'_, Arc<AppState>>,
+    json_content: String,
+) -> Result<ProxyConfig, String> {
+    let config: ProxyConfig = serde_json::from_str(&json_content)
+        .map_err(|e| format!("Formato de arquivo JSON inválido: {}", e))?;
+    *state.config.lock() = config.clone();
+    Ok(config)
 }
 
 #[tauri::command]
@@ -135,8 +151,11 @@ pub async fn execute_replay(
 
     let _ = app.emit("relay:request", &exchange);
 
-    // Conecta diretamente ao upstream configurado
-    let target_addr = format!("{}:{}", config.target_host, config.target_port);
+    // Resolve o host e porta de destino conforme as regras de rotas
+    let (target_host, target_port, _) = resolve_route_target(&payload.uri, &config);
+
+    // Conecta diretamente ao upstream correspondente à rota
+    let target_addr = format!("{}:{}", target_host, target_port);
     let stream = TcpStream::connect(&target_addr)
         .await
         .map_err(|e| format!("Falha ao conectar com o upstream ({}): {}", target_addr, e))?;

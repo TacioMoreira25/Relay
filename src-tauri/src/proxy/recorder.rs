@@ -42,6 +42,15 @@ pub struct HttpExchange {
     pub error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RouteRule {
+    pub path_prefix: String,      // Ex: "/api/v1/auth", "/auth", "/users"
+    pub target_host: Option<String>, // Opcional, se ausente herda target_host global
+    pub target_port: u16,         // Porta específica deste serviço (ex: 4000)
+    pub latency_ms: Option<u64>,  // Latência específica da rota (opcional)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProxyConfig {
@@ -53,6 +62,8 @@ pub struct ProxyConfig {
     pub simulate_failure_rate: f32, // 0.0 a 1.0 (ex: 0.25 = 25% de falhas)
     pub failure_status_code: u16,   // 500, 502, 503, 504
     pub auto_extract_jwt: bool,
+    #[serde(default)]
+    pub routes: Vec<RouteRule>,     // Regras flexíveis de roteamento multisserviço
 }
 
 impl Default for ProxyConfig {
@@ -66,6 +77,7 @@ impl Default for ProxyConfig {
             simulate_failure_rate: 0.0,
             failure_status_code: 500,
             auto_extract_jwt: true,
+            routes: Vec::new(),
         }
     }
 }
