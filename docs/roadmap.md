@@ -38,9 +38,10 @@ Este documento define o plano de entrega do Relay, partindo do MVP até a maturi
 - [x] Testes unitários de cálculo de jitter e probabilidade de falhas (`test_calculate_delay_jitter`, `test_should_simulate_failure`).
 
 ### 🔹 Fase 6: Cliente HTTP & Replay de Chamadas
-- [ ] Ação de "Replay" no inspetor para reenviar qualquer chamada gravada.
-- [ ] Editor integrado de parâmetros, query strings e headers para repetição personalizada.
-- [ ] Auto-injeção do último token JWT válido durante o replay.
+- [x] Ação de "Replay Chamada" no inspetor para carregar qualquer requisição capturada no editor.
+- [x] Editor completo de método HTTP, URI/query parameters, tabela de cabeçalhos dinâmicos e textarea de payload body.
+- [x] Botão rápido de "Auto-Injetar JWT da Sessão" para preencher automaticamente o cabeçalho `Authorization: Bearer <token>` com o token ativo mais recente.
+- [x] Execução nativa no backend Rust via comando `execute_replay` com streaming direto do resultado para a lista de tráfego e inspector.
 
 ### 🔹 Fase 7: Otimizações para Linux & KDE Plasma
 - [ ] Suporte a System Tray com menu de contexto para controle rápido do proxy.

@@ -36,6 +36,7 @@ pub fn run() {
             commands::clear_session_jwts,
             commands::get_exchanges,
             commands::clear_exchanges,
+            commands::execute_replay,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

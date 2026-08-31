@@ -1,9 +1,18 @@
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
+use hyper::Request;
+use hyper_util::rt::TokioIo;
 use parking_lot::Mutex;
 use std::sync::Arc;
-use tauri::{AppHandle, State};
+use std::time::Instant;
+use tauri::{AppHandle, Emitter, State};
+use tokio::net::TcpStream;
+use uuid::Uuid;
 
-use crate::proxy::{HttpExchange, ProxyConfig, ProxyServer};
-use crate::state::{ExtractedJwt, SessionState};
+use crate::proxy::{
+    HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig, ProxyServer,
+};
+use crate::state::{extract_jwts_from_body, extract_jwts_from_headers, ExtractedJwt, SessionState};
 
 pub struct AppState {
     pub proxy_server: Mutex<Option<ProxyServer>>,
@@ -71,4 +80,175 @@ pub async fn get_exchanges(state: State<'_, Arc<AppState>>) -> Result<Vec<HttpEx
 pub async fn clear_exchanges(state: State<'_, Arc<AppState>>) -> Result<(), String> {
     state.exchanges.lock().clear();
     Ok(())
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReplayRequestPayload {
+    pub method: String,
+    pub uri: String,
+    pub headers: Vec<HeaderEntry>,
+    pub body: Option<String>,
+}
+
+/// Executa um replay direto para o servidor alvo sem passar pelo socket local
+#[tauri::command]
+pub async fn execute_replay(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    payload: ReplayRequestPayload,
+) -> Result<HttpExchange, String> {
+    let config = state.config.lock().clone();
+    let req_id = format!("replay-{}", Uuid::new_v4());
+    let timestamp = chrono::Utc::now().timestamp_millis();
+    let start_time = Instant::now();
+
+    let method = match hyper::Method::from_bytes(payload.method.to_uppercase().as_bytes()) {
+        Ok(m) => m,
+        Err(_) => hyper::Method::GET,
+    };
+
+    let body_bytes = payload
+        .body
+        .as_ref()
+        .map(|b| Bytes::from(b.clone()))
+        .unwrap_or_else(Bytes::new);
+
+    let intercepted_req = InterceptedRequest {
+        id: req_id.clone(),
+        timestamp,
+        method: method.to_string(),
+        uri: payload.uri.clone(),
+        headers: payload.headers.clone(),
+        body: payload.body.clone(),
+        size_bytes: body_bytes.len(),
+    };
+
+    let mut exchange = HttpExchange {
+        id: req_id.clone(),
+        request: intercepted_req,
+        response: None,
+        status: "pending".to_string(),
+        error: None,
+    };
+
+    let _ = app.emit("relay:request", &exchange);
+
+    // Conecta diretamente ao upstream configurado
+    let target_addr = format!("{}:{}", config.target_host, config.target_port);
+    let stream = TcpStream::connect(&target_addr)
+        .await
+        .map_err(|e| format!("Falha ao conectar com o upstream ({}): {}", target_addr, e))?;
+    let io = TokioIo::new(stream);
+
+    let (mut sender, conn) = hyper::client::conn::http1::handshake(io)
+        .await
+        .map_err(|e| format!("Erro no handshake com upstream: {}", e))?;
+
+    tokio::spawn(async move {
+        let _ = conn.await;
+    });
+
+    let uri_path = if payload.uri.starts_with('/') {
+        payload.uri.clone()
+    } else {
+        format!("/{}", payload.uri)
+    };
+
+    let mut builder = Request::builder().method(&method).uri(&uri_path);
+
+    for h in &payload.headers {
+        if !h.key.eq_ignore_ascii_case("host")
+            && !h.key.eq_ignore_ascii_case("connection")
+            && !h.key.eq_ignore_ascii_case("transfer-encoding")
+        {
+            if let Ok(name) = hyper::header::HeaderName::from_bytes(h.key.as_bytes()) {
+                if let Ok(val) = hyper::header::HeaderValue::from_str(&h.value) {
+                    builder = builder.header(name, val);
+                }
+            }
+        }
+    }
+    builder = builder.header("host", &target_addr);
+
+    let req = builder
+        .body(Full::new(body_bytes))
+        .map_err(|e| format!("Falha ao construir requisição: {}", e))?;
+
+    let forward_res = sender.send_request(req).await;
+    let duration_ms = start_time.elapsed().as_millis() as u64;
+
+    match forward_res {
+        Ok(res) => {
+            let status_code = res.status().as_u16();
+            let mut res_headers = Vec::new();
+            for (k, v) in res.headers().iter() {
+                res_headers.push(HeaderEntry {
+                    key: k.as_str().to_string(),
+                    value: v.to_str().unwrap_or_default().to_string(),
+                });
+            }
+
+            let res_bytes = match res.into_body().collect().await {
+                Ok(c) => c.to_bytes(),
+                Err(_) => Bytes::new(),
+            };
+
+            let res_body_str = String::from_utf8(res_bytes.to_vec()).ok();
+
+            let intercepted_res = InterceptedResponse {
+                id: Uuid::new_v4().to_string(),
+                request_id: req_id.clone(),
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                status_code,
+                headers: res_headers.clone(),
+                body: res_body_str.clone(),
+                size_bytes: res_bytes.len(),
+                duration_ms,
+            };
+
+            // Auto-captura JWT em respostas do replay
+            if config.auto_extract_jwt {
+                let res_header_tuples: Vec<(String, String)> = res_headers
+                    .iter()
+                    .map(|h| (h.key.clone(), h.value.clone()))
+                    .collect();
+
+                let mut res_jwts = extract_jwts_from_headers(&res_header_tuples, "replay_response");
+                if let Some(ref body_text) = res_body_str {
+                    let body_jwts = extract_jwts_from_body(body_text, "replay_response_body");
+                    res_jwts.extend(body_jwts);
+                }
+
+                for jwt in res_jwts {
+                    state.session.insert_jwt(jwt.clone());
+                    let _ = app.emit("relay:jwt", &jwt);
+                }
+            }
+
+            exchange.response = Some(intercepted_res.clone());
+            exchange.status = "completed".to_string();
+
+            state.exchanges.lock().push(exchange.clone());
+            let _ = app.emit("relay:response", &intercepted_res);
+
+            Ok(exchange)
+        }
+        Err(err) => {
+            let err_msg = err.to_string();
+            exchange.status = "failed".to_string();
+            exchange.error = Some(err_msg.clone());
+
+            state.exchanges.lock().push(exchange.clone());
+            let _ = app.emit(
+                "relay:error",
+                serde_json::json!({
+                    "requestId": req_id,
+                    "error": err_msg,
+                }),
+            );
+
+            Ok(exchange)
+        }
+    }
 }
