@@ -114,7 +114,11 @@ pub fn resolve_route_target(uri_path: &str, config: &ProxyConfig) -> (String, u1
         }
     }
 
-    (config.target_host.clone(), config.target_port, config.latency_ms)
+    (
+        config.target_host.clone(),
+        config.target_port,
+        config.latency_ms,
+    )
 }
 
 async fn handle_proxy_request(
@@ -198,8 +202,7 @@ async fn handle_proxy_request(
     let _ = app.emit("relay:request", &exchange);
 
     // Resolução de Rota Dinâmica (Suporta qualquer rota e múltiplos microservices)
-    let (target_host, target_port, route_latency_ms) =
-        resolve_route_target(&uri_string, &config);
+    let (target_host, target_port, route_latency_ms) = resolve_route_target(&uri_string, &config);
 
     // Injeção de latência dinâmica configurada com Jitter (Chaos Engineering)
     let total_delay_ms = calculate_delay(route_latency_ms, config.jitter_ms);
