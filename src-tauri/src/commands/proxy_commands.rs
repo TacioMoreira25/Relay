@@ -342,8 +342,7 @@ pub async fn execute_replay(
                     .map(|h| (h.key.clone(), h.value.clone()))
                     .collect();
 
-                let mut res_jwts =
-                    extract_jwts_from_headers(&res_header_tuples, "replay_response");
+                let mut res_jwts = extract_jwts_from_headers(&res_header_tuples, "replay_response");
                 if let Some(ref body_text) = res_body_str {
                     let body_jwts = extract_jwts_from_body(body_text, "replay_response_body");
                     res_jwts.extend(body_jwts);
