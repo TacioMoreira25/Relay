@@ -59,8 +59,14 @@ pub fn decode_jwt_token(token_str: &str, source: &str) -> Option<ExtractedJwt> {
     // Decodifica Payload (Claims)
     let claims_json = decode_base64_json(parts[1])?;
 
-    let subject = claims_json.get("sub").and_then(|v| v.as_str()).map(String::from);
-    let issuer = claims_json.get("iss").and_then(|v| v.as_str()).map(String::from);
+    let subject = claims_json
+        .get("sub")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    let issuer = claims_json
+        .get("iss")
+        .and_then(|v| v.as_str())
+        .map(String::from);
     let expires_at = claims_json.get("exp").and_then(|v| v.as_i64());
 
     Some(ExtractedJwt {
@@ -139,7 +145,9 @@ fn scan_json_for_jwts(
             for (k, v) in map {
                 if let serde_json::Value::String(s) = v {
                     if s.starts_with("ey") && s.contains('.') {
-                        if let Some(jwt) = decode_jwt_token(s, &format!("{}_field_{}", source_prefix, k)) {
+                        if let Some(jwt) =
+                            decode_jwt_token(s, &format!("{}_field_{}", source_prefix, k))
+                        {
                             tokens.push(jwt);
                         }
                     }
@@ -183,10 +191,7 @@ mod tests {
                 "authorization".to_string(),
                 format!("Bearer {}", test_token),
             ),
-            (
-                "content-type".to_string(),
-                "application/json".to_string(),
-            ),
+            ("content-type".to_string(), "application/json".to_string()),
         ];
 
         let extracted = extract_jwts_from_headers(&headers, "request");
