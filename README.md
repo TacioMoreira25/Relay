@@ -28,6 +28,59 @@ Construido com arquitetura nativa em **Rust (Tokio + Hyper)** e **Tauri v2 com S
 
 ---
 
+## Instalacao & Execucao em Producao
+
+Voce pode instalar e executar o Relay diretamente no seu sistema operacional Linux sem depender de terminal ou modo de desenvolvimento.
+
+### Opcao 1: Instalar no Fedora / RHEL / AlmaLinux (.rpm)
+
+```bash
+# Compila e gera o pacote nativo RPM
+npm run tauri build -- --bundles rpm
+
+# Instala no sistema
+sudo dnf install -y src-tauri/target/release/bundle/rpm/Relay-0.1.0-1.x86_64.rpm
+```
+
+### Opcao 2: Instalar no Ubuntu / Debian / Mint (.deb)
+
+```bash
+# Compila e gera o pacote Debian
+npm run tauri build -- --bundles deb
+
+# Instala no sistema
+sudo dpkg -i src-tauri/target/release/bundle/deb/Relay_0.1.0_amd64.deb
+```
+
+### Opcao 3: Executavel Binario Direto (Portatil)
+
+```bash
+# Compila o binario otimizado
+npm run tauri build
+
+# Copia para os binarios locais do usuario
+mkdir -p ~/.local/bin
+cp src-tauri/target/release/relay ~/.local/bin/
+```
+
+Apos a instalacao, o **Relay** ficara disponivel no menu de aplicativos do seu ambiente desktop (GNOME, KDE Plasma, XFCE) e podera ser iniciado digitando `relay` no terminal.
+
+---
+
+## Desenvolvimento Local
+
+Para rodar o projeto com hot-reload ativo:
+
+```bash
+# 1. Instale as dependencias do frontend
+npm install
+
+# 2. Inicie em modo de desenvolvimento
+npm run tauri dev
+```
+
+---
+
 ## Fluxo de Interceptacao
 
 ```mermaid
@@ -58,62 +111,6 @@ sequenceDiagram
 
 ---
 
-## Guia de Inicio Rapido (Linux)
-
-### 1. Pre-requisitos
-Certifique-se de possuir o compilador **Rust** e o **Node.js**:
-
-```bash
-# Instalar Rust (via Rustup)
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source "$HOME/.cargo/env"
-```
-
-### 2. Dependencias do Sistema
-
-<details>
-<summary><b>Fedora / RHEL / AlmaLinux</b> (Clique para expandir)</summary>
-
-```bash
-sudo dnf install -y \
-  gcc gcc-c++ webkit2gtk4.1-devel openssl-devel \
-  curl wget file libappindicator-gtk3-devel librsvg2-devel
-```
-</details>
-
-<details>
-<summary><b>Ubuntu / Debian / Mint</b> (Clique para expandir)</summary>
-
-```bash
-sudo apt update && sudo apt install -y \
-  build-essential curl wget file libssl-dev libgtk-3-dev \
-  libayatana-appindicator3-dev librsvg2-dev libwebkit2gtk-4.1-dev
-```
-</details>
-
-<details>
-<summary><b>Arch Linux / Manjaro</b> (Clique para expandir)</summary>
-
-```bash
-sudo pacman -Syu --needed \
-  base-devel curl wget openssl gtk3 libappindicator-gtk3 librsvg webkit2gtk-4.1
-```
-</details>
-
----
-
-### 3. Rodando o Projeto
-
-```bash
-# 1. Instale as dependencias do frontend
-npm install
-
-# 2. Inicie em modo de desenvolvimento (com Hot-Reload no Rust e Svelte)
-npm run tauri dev
-```
-
----
-
 ## Documentacao dos Modulos
 
 | Modulo | Descricao |
@@ -123,32 +120,6 @@ npm run tauri dev
 | **JWT & Session** | Deteccao automatica e decodificacao de claims JWT |
 | **HTTP Replay** | Reenvio instantaneo e encadeamento automatico de variaveis de resposta |
 | **Target Discovery** | Varredura assincrona de portas de desenvolvimento no Linux |
-
----
-
-## Estrutura do Repositorio
-
-```text
-relay/
-├── docs/                   # Documentacao arquitetural e de features
-├── src/                    # Frontend (Svelte 5 + TypeScript + Tailwind)
-│   ├── lib/
-│   │   ├── components/     # Componentes modulares
-│   │   ├── stores/         # Estados reativos com Svelte 5 Runes ($state)
-│   │   └── types/          # Contratos TypeScript sincronizados com Rust
-│   ├── App.svelte          # Shell principal da interface desktop
-│   └── main.ts             # Entrada da aplicacao Svelte
-├── src-tauri/              # Backend Nativo (Rust + Tokio + Hyper)
-│   ├── src/
-│   │   ├── proxy/          # Motor proxy, scanner de portas e interceptacao
-│   │   ├── state/          # Gerenciamento de memoria e session JWT
-│   │   ├── commands/       # Tauri IPC commands
-│   │   ├── lib.rs          # Handlers e setup do Tauri v2
-│   │   └── main.rs         # Entrypoint nativo
-│   ├── Cargo.toml          # Dependencias Rust
-│   └── tauri.conf.json     # Configuracoes Tauri v2
-└── README.md
-```
 
 ---
 
