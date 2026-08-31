@@ -129,7 +129,7 @@ pub async fn execute_replay(
         .body
         .as_ref()
         .map(|b| Bytes::from(b.clone()))
-        .unwrap_or_else(Bytes::new);
+        .unwrap_or_default();
 
     let intercepted_req = InterceptedRequest {
         id: req_id.clone(),

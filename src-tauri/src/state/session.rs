@@ -37,7 +37,7 @@ impl SessionState {
     pub fn list_jwts(&self) -> Vec<ExtractedJwt> {
         let map = self.tokens.read();
         let mut list: Vec<ExtractedJwt> = map.values().cloned().collect();
-        list.sort_by(|a, b| b.detected_at.cmp(&a.detected_at));
+        list.sort_by_key(|a| std::cmp::Reverse(a.detected_at));
         list
     }
 
