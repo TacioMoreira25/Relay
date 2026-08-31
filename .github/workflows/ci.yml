@@ -89,7 +89,9 @@ jobs:
         run: npm ci
 
       - name: Build Tauri Desktop Package
-        run: npx tauri build --bundles appimage,deb
+        run: npx @tauri-apps/cli@2.0.0 build --bundles appimage,deb
+        env:
+          TAURI_CLI_NO_VERSION_CHECK: "true"
 
       - name: Upload Linux Artifacts
         uses: actions/upload-artifact@v4
