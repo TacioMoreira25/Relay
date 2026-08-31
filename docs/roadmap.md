@@ -49,6 +49,8 @@ Este documento define o plano de entrega do Relay, partindo do MVP até a maturi
 - [x] Pipeline de CI no GitHub Actions configurado com job automatizado de empacotamento Linux (AppImage & Debian/Ubuntu `.deb`).
 
 ### 🔹 Fase 8: Suporte a HTTPS / MITM & Exportação de Tráfego
-- [ ] Geração dinâmica de certificados raiz locais (CA) para interceptação transparente de HTTPS.
-- [ ] Exportação e importação de sessões de tráfego nos formatos HAR e OpenAPI 3.0.
-- [ ] Documentação completa de uso e release da versão 1.0 estável.
+- [x] Geração dinâmica de certificados raiz locais (CA) para interceptação transparente de HTTPS (`rcgen`, chaves RSA/ECDSA e download de arquivos `.crt` e `.key`).
+- [x] Exportação de sessões de tráfego completas para a especificação oficial HAR 1.2 (compatível com DevTools, Postman, Insomnia e Charles).
+- [x] Geração automática de especificações OpenAPI 3.0 (Swagger) baseadas no tráfego HTTP observado em tempo de execução.
+- [x] Modal unificado de exportação e HTTPS (`ExportModal.svelte`) com atalho rápido de teclado `Ctrl+E`.
+- [x] Testes unitários no Rust para geração de CA (`test_generate_root_ca`), exportação HAR (`test_export_to_har`) e OpenAPI (`test_export_to_openapi`).

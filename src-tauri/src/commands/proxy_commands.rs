@@ -10,7 +10,8 @@ use tokio::net::TcpStream;
 use uuid::Uuid;
 
 use crate::proxy::{
-    HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig, ProxyServer,
+    export_to_har, export_to_openapi, generate_root_ca, GeneratedCa, HeaderEntry, HttpExchange,
+    InterceptedRequest, InterceptedResponse, ProxyConfig, ProxyServer,
 };
 use crate::state::{extract_jwts_from_body, extract_jwts_from_headers, ExtractedJwt, SessionState};
 
@@ -214,7 +215,8 @@ pub async fn execute_replay(
                     .map(|h| (h.key.clone(), h.value.clone()))
                     .collect();
 
-                let mut res_jwts = extract_jwts_from_headers(&res_header_tuples, "replay_response");
+                let mut res_jwts =
+                    extract_jwts_from_headers(&res_header_tuples, "replay_response");
                 if let Some(ref body_text) = res_body_str {
                     let body_jwts = extract_jwts_from_body(body_text, "replay_response_body");
                     res_jwts.extend(body_jwts);
@@ -251,4 +253,26 @@ pub async fn execute_replay(
             Ok(exchange)
         }
     }
+}
+
+/// Gera um novo certificado raiz CA para inspeção HTTPS / MITM
+#[tauri::command]
+pub async fn create_ca_certificate(common_name: Option<String>) -> Result<GeneratedCa, String> {
+    let name = common_name.unwrap_or_else(|| "Relay Root CA Local".to_string());
+    generate_root_ca(&name)
+}
+
+/// Exporta a sessão atual de tráfego para formato HAR 1.2
+#[tauri::command]
+pub async fn export_har(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+    let list = state.exchanges.lock();
+    Ok(export_to_har(&list))
+}
+
+/// Exporta os endpoints interceptados para especificação OpenAPI 3.0
+#[tauri::command]
+pub async fn export_openapi(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+    let list = state.exchanges.lock();
+    let config = state.config.lock();
+    Ok(export_to_openapi(&list, &config.target_host, config.target_port))
 }

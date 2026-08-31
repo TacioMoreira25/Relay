@@ -55,3 +55,10 @@ export interface ExtractedJwt {
   issuer?: string;
   expiresAt?: number;
 }
+
+export interface GeneratedCa {
+  certPem: string;
+  keyPem: string;
+  commonName: string;
+  createdAt: number;
+}

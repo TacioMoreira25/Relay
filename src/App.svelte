@@ -3,6 +3,7 @@
   import Inspector from "$lib/components/Inspector.svelte";
   import TestTrigger from "$lib/components/TestTrigger.svelte";
   import ProxyConfigModal from "$lib/components/ProxyConfigModal.svelte";
+  import ExportModal from "$lib/components/ExportModal.svelte";
   import JwtManager from "$lib/components/JwtManager.svelte";
   import { relayState } from "$lib/stores/traffic.svelte";
   import type { HttpExchange, InterceptedResponse, ExtractedJwt } from "$lib/types";
@@ -11,6 +12,7 @@
   import { onMount } from "svelte";
 
   let isConfigOpen = $state(false);
+  let isExportOpen = $state(false);
 
   async function syncInitialState(): Promise<void> {
     try {
@@ -59,6 +61,11 @@
     else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
       event.preventDefault();
       toggleProxy();
+    }
+    // Atalho: Ctrl+E / Cmd+E -> Abrir Exportação & HTTPS
+    else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "e") {
+      event.preventDefault();
+      isExportOpen = true;
     }
   }
 
@@ -152,6 +159,16 @@
 
     <!-- Proxy Controls, Port Badge & Test Trigger -->
     <div class="flex items-center space-x-3">
+      <!-- Export & CA Trigger Button -->
+      <button
+        onclick={() => (isExportOpen = true)}
+        class="text-xs px-2.5 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium flex items-center space-x-1.5 transition-colors border border-zinc-700/60 cursor-pointer"
+        title="Exportar HAR / OpenAPI ou Gerar Certificado HTTPS CA (Atalho: Ctrl+E)"
+      >
+        <span>📦</span>
+        <span class="hidden md:inline">Exportar / HTTPS</span>
+      </button>
+
       <button
         onclick={() => (isConfigOpen = true)}
         class="flex items-center space-x-2 text-xs font-mono bg-zinc-800/80 hover:bg-zinc-800 px-2.5 py-1 rounded border border-zinc-700/60 transition-colors cursor-pointer"
@@ -203,6 +220,7 @@
     {/if}
   </div>
 
-  <!-- Config & Chaos Modal -->
+  <!-- Modals -->
   <ProxyConfigModal bind:isOpen={isConfigOpen} />
+  <ExportModal bind:isOpen={isExportOpen} />
 </main>
