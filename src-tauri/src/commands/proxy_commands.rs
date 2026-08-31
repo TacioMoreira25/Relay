@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, State};
 use tokio::net::TcpStream;
+use tokio::time::{timeout, Duration};
 use uuid::Uuid;
 
 use crate::proxy::{
@@ -99,6 +100,90 @@ pub async fn clear_exchanges(state: State<'_, Arc<AppState>>) -> Result<(), Stri
     Ok(())
 }
 
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedTemplateInput {
+    pub id: Option<String>,
+    pub name: String,
+    pub description: Option<String>,
+    pub tag: Option<String>,
+    pub method: String,
+    pub uri: String,
+    #[serde(default)]
+    pub headers: Vec<HeaderEntry>,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub requires_auth: bool,
+}
+
+#[derive(serde::Deserialize, serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct SavedTemplateOutput {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub tag: Option<String>,
+    pub method: String,
+    pub uri: String,
+    pub headers: Vec<HeaderEntry>,
+    pub body: Option<String>,
+    pub requires_auth: bool,
+}
+
+/// Importa uma coleção de endpoints estruturados (JSON de Templates)
+#[tauri::command]
+pub async fn parse_collection_json(
+    json_content: String,
+) -> Result<Vec<SavedTemplateOutput>, String> {
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_content).map_err(|e| format!("JSON inválido: {}", e))?;
+
+    let mut result = Vec::new();
+
+    if let Some(arr) = parsed.as_array() {
+        for (i, item) in arr.iter().enumerate() {
+            if let Ok(tpl) = serde_json::from_value::<SavedTemplateInput>(item.clone()) {
+                let id = tpl.id.unwrap_or_else(|| format!("tpl-{}", i + 1));
+                result.push(SavedTemplateOutput {
+                    id,
+                    name: tpl.name,
+                    description: tpl.description,
+                    tag: tpl.tag,
+                    method: tpl.method.to_uppercase(),
+                    uri: tpl.uri,
+                    headers: tpl.headers,
+                    body: tpl.body,
+                    requires_auth: tpl.requires_auth,
+                });
+            }
+        }
+        return Ok(result);
+    }
+
+    if let Some(arr) = parsed.get("requests").and_then(|r| r.as_array()) {
+        for (i, item) in arr.iter().enumerate() {
+            if let Ok(tpl) = serde_json::from_value::<SavedTemplateInput>(item.clone()) {
+                let id = tpl.id.unwrap_or_else(|| format!("tpl-{}", i + 1));
+                result.push(SavedTemplateOutput {
+                    id,
+                    name: tpl.name,
+                    description: tpl.description,
+                    tag: tpl.tag,
+                    method: tpl.method.to_uppercase(),
+                    uri: tpl.uri,
+                    headers: tpl.headers,
+                    body: tpl.body,
+                    requires_auth: tpl.requires_auth,
+                });
+            }
+        }
+        return Ok(result);
+    }
+
+    Err("Formato de coleção desconhecido. Envie um JSON array com os endpoints.".to_string())
+}
+
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplayRequestPayload {
@@ -108,7 +193,7 @@ pub struct ReplayRequestPayload {
     pub body: Option<String>,
 }
 
-/// Executa um replay direto para o servidor alvo sem passar pelo socket local
+/// Executa um replay direto para o servidor alvo de forma segura com timeout
 #[tauri::command]
 pub async fn execute_replay(
     app: AppHandle,
@@ -153,14 +238,37 @@ pub async fn execute_replay(
 
     // Resolve o host e porta de destino conforme as regras de rotas
     let (target_host, target_port, _) = resolve_route_target(&payload.uri, &config);
-
-    // Conecta diretamente ao upstream correspondente à rota
     let target_addr = format!("{}:{}", target_host, target_port);
-    let stream = TcpStream::connect(&target_addr)
-        .await
-        .map_err(|e| format!("Falha ao conectar com o upstream ({}): {}", target_addr, e))?;
-    let io = TokioIo::new(stream);
 
+    // Conexão com timeout de 5 segundos
+    let connect_res = timeout(Duration::from_secs(5), TcpStream::connect(&target_addr)).await;
+    let stream = match connect_res {
+        Ok(Ok(s)) => s,
+        Ok(Err(e)) => {
+            let err_msg = format!("Falha ao conectar com o upstream ({}): {}", target_addr, e);
+            exchange.status = "failed".to_string();
+            exchange.error = Some(err_msg.clone());
+            state.exchanges.lock().push(exchange.clone());
+            let _ = app.emit(
+                "relay:error",
+                serde_json::json!({ "requestId": req_id, "error": err_msg }),
+            );
+            return Ok(exchange);
+        }
+        Err(_) => {
+            let err_msg = format!("Timeout de conexão com o upstream ({})", target_addr);
+            exchange.status = "failed".to_string();
+            exchange.error = Some(err_msg.clone());
+            state.exchanges.lock().push(exchange.clone());
+            let _ = app.emit(
+                "relay:error",
+                serde_json::json!({ "requestId": req_id, "error": err_msg }),
+            );
+            return Ok(exchange);
+        }
+    };
+
+    let io = TokioIo::new(stream);
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io)
         .await
         .map_err(|e| format!("Erro no handshake com upstream: {}", e))?;
@@ -195,11 +303,11 @@ pub async fn execute_replay(
         .body(Full::new(body_bytes))
         .map_err(|e| format!("Falha ao construir requisição: {}", e))?;
 
-    let forward_res = sender.send_request(req).await;
+    let forward_res = timeout(Duration::from_secs(10), sender.send_request(req)).await;
     let duration_ms = start_time.elapsed().as_millis() as u64;
 
     match forward_res {
-        Ok(res) => {
+        Ok(Ok(res)) => {
             let status_code = res.status().as_u16();
             let mut res_headers = Vec::new();
             for (k, v) in res.headers().iter() {
@@ -234,7 +342,8 @@ pub async fn execute_replay(
                     .map(|h| (h.key.clone(), h.value.clone()))
                     .collect();
 
-                let mut res_jwts = extract_jwts_from_headers(&res_header_tuples, "replay_response");
+                let mut res_jwts =
+                    extract_jwts_from_headers(&res_header_tuples, "replay_response");
                 if let Some(ref body_text) = res_body_str {
                     let body_jwts = extract_jwts_from_body(body_text, "replay_response_body");
                     res_jwts.extend(body_jwts);
@@ -254,8 +363,24 @@ pub async fn execute_replay(
 
             Ok(exchange)
         }
-        Err(err) => {
+        Ok(Err(err)) => {
             let err_msg = err.to_string();
+            exchange.status = "failed".to_string();
+            exchange.error = Some(err_msg.clone());
+
+            state.exchanges.lock().push(exchange.clone());
+            let _ = app.emit(
+                "relay:error",
+                serde_json::json!({
+                    "requestId": req_id,
+                    "error": err_msg,
+                }),
+            );
+
+            Ok(exchange)
+        }
+        Err(_) => {
+            let err_msg = "Timeout aguardando resposta do upstream (10s)".to_string();
             exchange.status = "failed".to_string();
             exchange.error = Some(err_msg.clone());
 

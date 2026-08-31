@@ -1,8 +1,16 @@
-import type { HttpExchange, ExtractedJwt, ProxyConfig, RouteRule } from "$lib/types";
+import type { HttpExchange, ExtractedJwt, ProxyConfig, RouteRule, SavedRequestTemplate } from "$lib/types";
 
 class RelayState {
   exchanges = $state<HttpExchange[]>([]);
   selectedExchange = $state<HttpExchange | null>(null);
+  
+  // Coleção de Requisições Salvas / Templates
+  savedTemplates = $state<SavedRequestTemplate[]>([]);
+  selectedTemplate = $state<SavedRequestTemplate | null>(null);
+
+  // Navegação Lateral: "history" (Tráfego Real) vs "collection" (Rotas Salvas)
+  sidebarTab = $state<"history" | "collection">("history");
+
   jwts = $state<ExtractedJwt[]>([]);
   selectedJwt = $state<ExtractedJwt | null>(null);
   isProxyRunning = $state<boolean>(false);
@@ -27,12 +35,13 @@ class RelayState {
 
   // Derived - Estatísticas
   totalRequests = $derived(this.exchanges.length);
+  totalTemplates = $derived(this.savedTemplates.length);
   failedRequests = $derived(
     this.exchanges.filter(e => e.status === "failed" || (e.response && e.response.statusCode >= 400)).length
   );
   totalJwts = $derived(this.jwts.length);
 
-  // Derived - Lista Filtrada em Tempo Real
+  // Derived - Lista Filtrada do Histórico em Tempo Real
   filteredExchanges = $derived(
     this.exchanges.filter(e => {
       if (this.methodFilter !== "ALL" && e.request.method.toUpperCase() !== this.methodFilter) {
@@ -66,6 +75,25 @@ class RelayState {
     })
   );
 
+  // Derived - Templates Filtrados por busca
+  filteredTemplates = $derived(
+    this.savedTemplates.filter(t => {
+      if (this.methodFilter !== "ALL" && t.method.toUpperCase() !== this.methodFilter) {
+        return false;
+      }
+      if (this.searchQuery.trim()) {
+        const query = this.searchQuery.toLowerCase().trim();
+        return (
+          t.name.toLowerCase().includes(query) ||
+          t.uri.toLowerCase().includes(query) ||
+          (t.tag && t.tag.toLowerCase().includes(query)) ||
+          (t.body && t.body.toLowerCase().includes(query))
+        );
+      }
+      return true;
+    })
+  );
+
   // Actions - Requisições
   addExchange(exchange: HttpExchange): void {
     this.exchanges = [exchange, ...this.exchanges];
@@ -94,6 +122,20 @@ class RelayState {
   clear(): void {
     this.exchanges = [];
     this.selectedExchange = null;
+  }
+
+  // Actions - Templates / Coleções
+  setTemplates(templates: SavedRequestTemplate[]): void {
+    this.savedTemplates = templates;
+  }
+
+  addTemplate(template: SavedRequestTemplate): void {
+    this.savedTemplates = [...this.savedTemplates, template];
+  }
+
+  clearTemplates(): void {
+    this.savedTemplates = [];
+    this.selectedTemplate = null;
   }
 
   // Actions - JWTs

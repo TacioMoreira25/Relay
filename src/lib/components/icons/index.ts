@@ -14,3 +14,7 @@ export { default as IconKey } from "./Key.svelte";
 export { default as IconTerminal } from "./Terminal.svelte";
 export { default as IconHelpCircle } from "./HelpCircle.svelte";
 export { default as IconCommand } from "./Command.svelte";
+export { default as IconPlus } from "./Plus.svelte";
+export { default as IconWand2 } from "./Wand2.svelte";
+export { default as IconBookmark } from "./Bookmark.svelte";
+export { default as IconHistory } from "./History.svelte";

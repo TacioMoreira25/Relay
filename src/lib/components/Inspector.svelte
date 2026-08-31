@@ -204,86 +204,88 @@
                       <IconCheck size={12} class="text-emerald-400" />
                       <span class="text-emerald-400">Copiado</span>
                     {:else}
-                      <IconCopy size={12} />
-                      <span>Copiar</span>
-                    {/if}
-                  </button>
-                {/if}
-              </div>
-
-              <div class="border border-zinc-800/80 rounded-lg overflow-hidden bg-zinc-900/30">
-                <table class="w-full text-left text-xs font-mono">
-                  <thead class="bg-zinc-900/80 border-b border-zinc-800/80 text-zinc-500 text-[10px] uppercase tracking-wider select-none">
-                    <tr>
-                      <th class="py-1.5 px-3 w-1/3 font-medium">Header</th>
-                      <th class="py-1.5 px-3 font-medium">Valor</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-zinc-800/40">
-                    {#each exchange.response.headers as header}
-                      <tr class="hover:bg-zinc-900/50 transition-colors">
-                        <td class="py-1.5 px-3 font-medium text-emerald-400 break-all">{header.key}</td>
-                        <td class="py-1.5 px-3 text-zinc-300 break-all select-all">{header.value}</td>
-                      </tr>
-                    {/each}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            <!-- Response Body -->
-            <div class="space-y-2">
-              <div class="flex items-center justify-between select-none">
-                <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                  Response Body ({exchange.response.sizeBytes} bytes)
-                </span>
-                {#if exchange.response.body}
-                  <button
-                    onclick={() => copyToClipboard(exchange?.response?.body || "", "res_body")}
-                    class="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center space-x-1 cursor-pointer"
-                  >
-                    {#if copyFeedback === "res_body"}
-                      <IconCheck size={12} class="text-emerald-400" />
-                      <span class="text-emerald-400">Copiado</span>
-                    {:else}
-                      <IconCopy size={12} />
-                      <span>Copiar</span>
-                    {/if}
-                  </button>
-                {/if}
-              </div>
-
-              {#if exchange.response.body}
-                {@const { formatted, isJson } = formatBody(exchange.response.body)}
-                <div class="relative group">
-                  <pre class="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3 text-xs font-mono text-zinc-200 overflow-x-auto leading-relaxed max-h-96">{formatted}</pre>
-                  {#if isJson}
-                    <span class="absolute top-2 right-2 text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 select-none">
-                      JSON
-                    </span>
+                    <IconCopy size={12} />
+                    <span>Copiar</span>
                   {/if}
-                </div>
-              {:else}
-                <div class="p-3 bg-zinc-900/20 border border-zinc-800/60 rounded-lg text-xs text-zinc-500 italic select-none">
-                  Sem corpo de resposta.
-                </div>
+                </button>
               {/if}
             </div>
-          </div>
-        {:else if exchange.status === "failed"}
-          <div class="p-4 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 space-y-1">
-            <div class="font-semibold text-xs uppercase tracking-wider">Falha na Conexão / Erro</div>
-            <div class="text-xs font-mono text-rose-200">{exchange.error || "Erro de Gateway / Conexão recusada"}</div>
-          </div>
-        {:else}
-          <div class="p-4 rounded-lg bg-zinc-900/20 border border-zinc-800 text-zinc-500 text-xs select-none">
-            Aguardando resposta do servidor upstream...
-          </div>
-        {/if}
-      {/if}
-    </div>
-  {/if}
 
-  <!-- Replay Modal -->
+            <div class="border border-zinc-800/80 rounded-lg overflow-hidden bg-zinc-900/30">
+              <table class="w-full text-left text-xs font-mono">
+                <thead class="bg-zinc-900/80 border-b border-zinc-800/80 text-zinc-500 text-[10px] uppercase tracking-wider select-none">
+                  <tr>
+                    <th class="py-1.5 px-3 w-1/3 font-medium">Header</th>
+                    <th class="py-1.5 px-3 font-medium">Valor</th>
+                  </tr>
+                </thead>
+                <tbody class="divide-y divide-zinc-800/40">
+                  {#each exchange.response.headers as header}
+                    <tr class="hover:bg-zinc-900/50 transition-colors">
+                      <td class="py-1.5 px-3 font-medium text-emerald-400 break-all">{header.key}</td>
+                      <td class="py-1.5 px-3 text-zinc-300 break-all select-all">{header.value}</td>
+                    </tr>
+                  {/each}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Response Body -->
+          <div class="space-y-2">
+            <div class="flex items-center justify-between select-none">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
+                Response Body ({exchange.response.sizeBytes} bytes)
+              </span>
+              {#if exchange.response.body}
+                <button
+                  onclick={() => copyToClipboard(exchange?.response?.body || "", "res_body")}
+                  class="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center space-x-1 cursor-pointer"
+                >
+                  {#if copyFeedback === "res_body"}
+                    <IconCheck size={12} class="text-emerald-400" />
+                    <span class="text-emerald-400">Copiado</span>
+                  {:else}
+                    <IconCopy size={12} />
+                    <span>Copiar</span>
+                  {/if}
+                </button>
+              {/if}
+            </div>
+
+            {#if exchange.response.body}
+              {@const { formatted, isJson } = formatBody(exchange.response.body)}
+              <div class="relative group">
+                <pre class="bg-zinc-900/60 border border-zinc-800 rounded-lg p-3 text-xs font-mono text-zinc-200 overflow-x-auto leading-relaxed max-h-96">{formatted}</pre>
+                {#if isJson}
+                  <span class="absolute top-2 right-2 text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 select-none">
+                    JSON
+                  </span>
+                {/if}
+              </div>
+            {:else}
+              <div class="p-3 bg-zinc-900/20 border border-zinc-800/60 rounded-lg text-xs text-zinc-500 italic select-none">
+                Sem corpo de resposta.
+              </div>
+            {/if}
+          </div>
+        </div>
+      {:else if exchange.status === "failed"}
+        <div class="p-4 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 space-y-1">
+          <div class="font-semibold text-xs uppercase tracking-wider">Falha na Conexão / Erro</div>
+          <div class="text-xs font-mono text-rose-200">{exchange.error || "Erro de Gateway / Conexão recusada"}</div>
+        </div>
+      {:else}
+        <div class="p-4 rounded-lg bg-zinc-900/20 border border-zinc-800 text-zinc-500 text-xs select-none">
+          Aguardando resposta do servidor upstream...
+        </div>
+      {/if}
+    {/if}
+  </div>
+{/if}
+
+<!-- Replay Modal condicional -->
+{#if isReplayOpen}
   <ReplayModal bind:isOpen={isReplayOpen} {exchange} />
+{/if}
 </div>

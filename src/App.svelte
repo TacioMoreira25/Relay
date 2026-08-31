@@ -4,6 +4,7 @@
   import ProxyConfigModal from "$lib/components/ProxyConfigModal.svelte";
   import ExportModal from "$lib/components/ExportModal.svelte";
   import TipsModal from "$lib/components/TipsModal.svelte";
+  import ReplayModal from "$lib/components/ReplayModal.svelte";
   import JwtManager from "$lib/components/JwtManager.svelte";
   import {
     IconActivity,
@@ -13,9 +14,10 @@
     IconPlay,
     IconSquare,
     IconHelpCircle,
+    IconPlus,
   } from "$lib/components/icons";
   import { relayState } from "$lib/stores/traffic.svelte";
-  import type { HttpExchange, InterceptedResponse, ExtractedJwt } from "$lib/types";
+  import type { HttpExchange, InterceptedResponse, ExtractedJwt, SavedRequestTemplate } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
@@ -23,6 +25,13 @@
   let isConfigOpen = $state(false);
   let isExportOpen = $state(false);
   let isTipsOpen = $state(false);
+  let isNewRequestOpen = $state(false);
+  let activeTestingTemplate = $state<SavedRequestTemplate | null>(null);
+
+  function handleOpenTemplate(tpl: SavedRequestTemplate): void {
+    activeTestingTemplate = tpl;
+    isNewRequestOpen = true;
+  }
 
   async function syncInitialState(): Promise<void> {
     try {
@@ -72,6 +81,10 @@
     } else if ((event.ctrlKey || event.metaKey) && (event.key === "/" || event.key === "?")) {
       event.preventDefault();
       isTipsOpen = true;
+    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
+      event.preventDefault();
+      activeTestingTemplate = null;
+      isNewRequestOpen = true;
     }
   }
 
@@ -152,6 +165,16 @@
 
     <!-- Actions & Controls -->
     <div class="flex items-center space-x-2">
+      <!-- Nova Requisição Direta -->
+      <button
+        onclick={() => { activeTestingTemplate = null; isNewRequestOpen = true; }}
+        class="text-xs px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 transition-colors flex items-center space-x-1.5 cursor-pointer"
+        title="Criar e disparar nova requisição HTTP direta (Ctrl+N)"
+      >
+        <IconPlus size={13} class="text-indigo-400" />
+        <span class="text-[11px] font-medium">Nova Requisição</span>
+      </button>
+
       <!-- Route Config Button -->
       <button
         onclick={() => (isConfigOpen = true)}
@@ -213,9 +236,9 @@
   <!-- Main View Content Area -->
   <div class="flex-1 flex overflow-hidden">
     {#if relayState.activeView === "traffic"}
-      <!-- Left Column: Request List -->
+      <!-- Left Column: Request List with History / Collection Segmented Tabs -->
       <div class="w-80 border-r border-zinc-800/80 h-full bg-zinc-950">
-        <RequestList />
+        <RequestList onOpenTemplate={handleOpenTemplate} />
       </div>
 
       <!-- Right Column: Inspector -->
@@ -232,4 +255,7 @@
   <ProxyConfigModal bind:isOpen={isConfigOpen} />
   <ExportModal bind:isOpen={isExportOpen} />
   <TipsModal bind:isOpen={isTipsOpen} />
+  {#if isNewRequestOpen}
+    <ReplayModal bind:isOpen={isNewRequestOpen} exchange={null} template={activeTestingTemplate} />
+  {/if}
 </main>

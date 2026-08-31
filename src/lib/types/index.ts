@@ -34,6 +34,18 @@ export interface HttpExchange {
   error?: string;
 }
 
+export interface SavedRequestTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  tag?: string;
+  method: HttpMethod;
+  uri: string;
+  headers: HeaderEntry[];
+  body?: string;
+  requiresAuth?: boolean;
+}
+
 export interface RouteRule {
   pathPrefix: string;
   targetHost?: string;
