@@ -28,6 +28,40 @@
     }
   }
 
+  async function toggleProxy(): Promise<void> {
+    try {
+      if (relayState.isProxyRunning) {
+        await invoke("stop_proxy");
+        relayState.isProxyRunning = false;
+      } else {
+        await invoke("start_proxy", { config: relayState.config });
+        relayState.isProxyRunning = true;
+      }
+    } catch (err) {
+      console.error("Erro ao alterar estado do proxy:", err);
+    }
+  }
+
+  function handleKeyDown(event: KeyboardEvent): void {
+    // Atalho: Ctrl+K / Cmd+K -> Focar campo de busca
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
+      event.preventDefault();
+      const searchInput = document.querySelector<HTMLInputElement>('input[type="text"]');
+      searchInput?.focus();
+    }
+    // Atalho: Ctrl+L / Cmd+L -> Limpar lista de tráfego
+    else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
+      event.preventDefault();
+      invoke("clear_exchanges");
+      relayState.clear();
+    }
+    // Atalho: Ctrl+P / Cmd+P -> Iniciar / Parar Proxy
+    else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
+      event.preventDefault();
+      toggleProxy();
+    }
+  }
+
   onMount(() => {
     let unlistenReq: UnlistenFn | undefined;
     let unlistenRes: UnlistenFn | undefined;
@@ -36,6 +70,8 @@
 
     // Sincroniza estado inicial do backend
     syncInitialState();
+
+    window.addEventListener("keydown", handleKeyDown);
 
     // Registra os listeners IPC do Tauri v2
     listen<HttpExchange>("relay:request", (event) => {
@@ -63,26 +99,13 @@
     });
 
     return () => {
+      window.removeEventListener("keydown", handleKeyDown);
       unlistenReq?.();
       unlistenRes?.();
       unlistenErr?.();
       unlistenJwt?.();
     };
   });
-
-  async function toggleProxy(): Promise<void> {
-    try {
-      if (relayState.isProxyRunning) {
-        await invoke("stop_proxy");
-        relayState.isProxyRunning = false;
-      } else {
-        await invoke("start_proxy", { config: relayState.config });
-        relayState.isProxyRunning = true;
-      }
-    } catch (err) {
-      console.error("Erro ao alterar estado do proxy:", err);
-    }
-  }
 </script>
 
 <main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 font-sans select-none">
@@ -154,6 +177,7 @@
       <button
         onclick={toggleProxy}
         class="text-xs px-3 py-1.5 rounded font-medium flex items-center space-x-1.5 transition-all {relayState.isProxyRunning ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30' : 'bg-indigo-600 text-white hover:bg-indigo-500'}"
+        title="Atalho: Ctrl+P"
       >
         <span class="w-2 h-2 rounded-full {relayState.isProxyRunning ? 'bg-rose-400 animate-ping' : 'bg-white'}"></span>
         <span>{relayState.isProxyRunning ? "Parar Proxy" : "Iniciar Proxy"}</span>

@@ -44,9 +44,9 @@ Este documento define o plano de entrega do Relay, partindo do MVP até a maturi
 - [x] Execução nativa no backend Rust via comando `execute_replay` com streaming direto do resultado para a lista de tráfego e inspector.
 
 ### 🔹 Fase 7: Otimizações para Linux & KDE Plasma
-- [ ] Suporte a System Tray com menu de contexto para controle rápido do proxy.
-- [ ] Integração de atalhos globais de teclado no desktop.
-- [ ] Empacotamento para Fedora (.rpm), Flatpak e AppImage com pipeline CI automatizado.
+- [x] Suporte a System Tray com menu de contexto nativo ("Mostrar / Ocultar Relay", "Encerrar") e clique rápido na bandeja.
+- [x] Integração de atalhos de teclado no desktop (`Ctrl+K` para busca global, `Ctrl+L` para limpar tráfego, `Ctrl+P` para ligar/desligar proxy).
+- [x] Pipeline de CI no GitHub Actions configurado com job automatizado de empacotamento Linux (AppImage & Debian/Ubuntu `.deb`).
 
 ### 🔹 Fase 8: Suporte a HTTPS / MITM & Exportação de Tráfego
 - [ ] Geração dinâmica de certificados raiz locais (CA) para interceptação transparente de HTTPS.

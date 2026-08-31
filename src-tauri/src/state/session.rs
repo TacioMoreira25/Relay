@@ -68,9 +68,7 @@ pub fn decode_jwt_token(raw_token: &str, source: &str) -> Option<ExtractedJwt> {
     let issuer = claims_json
         .get("iss")
         .and_then(|v| v.as_str().map(|s| s.to_string()));
-    let expires_at = claims_json
-        .get("exp")
-        .and_then(|v| v.as_i64());
+    let expires_at = claims_json.get("exp").and_then(|v| v.as_i64());
 
     Some(ExtractedJwt {
         token: token.to_string(),
@@ -93,13 +91,22 @@ fn decode_base64_url_segment(segment: &str) -> Option<serde_json::Value> {
 }
 
 /// Extrai tokens JWT presentes em cabeçalhos HTTP
-pub fn extract_jwts_from_headers(headers: &[(String, String)], source_prefix: &str) -> Vec<ExtractedJwt> {
+pub fn extract_jwts_from_headers(
+    headers: &[(String, String)],
+    source_prefix: &str,
+) -> Vec<ExtractedJwt> {
     let mut tokens = Vec::new();
 
     for (k, v) in headers {
         if k.eq_ignore_ascii_case("authorization") {
-            if let Some(token_part) = v.strip_prefix("Bearer ").or_else(|| v.strip_prefix("bearer ")) {
-                if let Some(jwt) = decode_jwt_token(token_part.trim(), &format!("{}_header_auth", source_prefix)) {
+            if let Some(token_part) = v
+                .strip_prefix("Bearer ")
+                .or_else(|| v.strip_prefix("bearer "))
+            {
+                if let Some(jwt) = decode_jwt_token(
+                    token_part.trim(),
+                    &format!("{}_header_auth", source_prefix),
+                ) {
                     tokens.push(jwt);
                 }
             }
@@ -107,7 +114,10 @@ pub fn extract_jwts_from_headers(headers: &[(String, String)], source_prefix: &s
             || k.eq_ignore_ascii_case("x-auth-token")
             || k.eq_ignore_ascii_case("token")
         {
-            if let Some(jwt) = decode_jwt_token(v.trim(), &format!("{}_header_{}", source_prefix, k.to_lowercase())) {
+            if let Some(jwt) = decode_jwt_token(
+                v.trim(),
+                &format!("{}_header_{}", source_prefix, k.to_lowercase()),
+            ) {
                 tokens.push(jwt);
             }
         }
@@ -168,9 +178,10 @@ mod tests {
 
     #[test]
     fn test_extract_jwts_from_headers() {
-        let headers = vec![
-            ("Authorization".to_string(), "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.sig".to_string()),
-        ];
+        let headers = vec![(
+            "Authorization".to_string(),
+            "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyMTIzIn0.sig".to_string(),
+        )];
         let jwts = extract_jwts_from_headers(&headers, "req");
         assert_eq!(jwts.len(), 1);
         assert_eq!(jwts[0].subject.as_deref(), Some("user123"));
