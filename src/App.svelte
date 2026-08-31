@@ -131,15 +131,20 @@
     <div class="flex items-center space-x-3">
       <button
         onclick={() => (isConfigOpen = true)}
-        class="flex items-center space-x-2 text-xs font-mono bg-zinc-800/80 hover:bg-zinc-800 px-2.5 py-1 rounded border border-zinc-700/60 transition-colors"
-        title="Clique para configurar portas e host"
+        class="flex items-center space-x-2 text-xs font-mono bg-zinc-800/80 hover:bg-zinc-800 px-2.5 py-1 rounded border border-zinc-700/60 transition-colors cursor-pointer"
+        title="Clique para configurar portas, latência, jitter e taxa de falhas"
       >
         <span class="text-zinc-400">127.0.0.1:{relayState.config.listenPort}</span>
         <span class="text-zinc-600">➔</span>
         <span class="text-indigo-400">{relayState.config.targetHost}:{relayState.config.targetPort}</span>
-        {#if relayState.config.latencyMs > 0}
-          <span class="text-[10px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300 font-sans">
-            +{relayState.config.latencyMs}ms
+        {#if relayState.config.latencyMs > 0 || relayState.config.jitterMs > 0}
+          <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-sans">
+            +{relayState.config.latencyMs}{relayState.config.jitterMs > 0 ? `±${relayState.config.jitterMs}` : ""}ms
+          </span>
+        {/if}
+        {#if relayState.config.simulateFailureRate > 0}
+          <span class="text-[10px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-300 font-sans font-bold">
+            {Math.round(relayState.config.simulateFailureRate * 100)}% {relayState.config.failureStatusCode}
           </span>
         {/if}
       </button>
@@ -174,6 +179,6 @@
     {/if}
   </div>
 
-  <!-- Config Modal -->
+  <!-- Config & Chaos Modal -->
   <ProxyConfigModal bind:isOpen={isConfigOpen} />
 </main>

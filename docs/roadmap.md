@@ -31,9 +31,11 @@ Este documento define o plano de entrega do Relay, partindo do MVP até a maturi
 - [x] Testes unitários no Rust para decodificação de JWT e extração de headers (`test_decode_jwt_token`, `test_extract_jwts_from_headers`).
 
 ### 🔹 Fase 5: Simulador de Falhas de Rede & Chaos Engineering
-- [ ] Suporte à injeção de latência configurável (milissegundos com jitter opcional).
-- [ ] Configuração de taxa percentual de erros simulados (ex: responder 500/503 aleatoriamente).
-- [ ] Painel de controle na barra superior para ajuste dinâmico em runtime.
+- [x] Injeção de latência base com suporte a Jitter aleatório configurável (`latency_ms` + `jitter_ms`).
+- [x] Injeção de taxa de falhas percentuais controladas (`simulate_failure_rate` de 0% a 100%) com retorno imediato de erro simulado sem onerar o upstream.
+- [x] Suporte a seleção de códigos de erro HTTP customizados (500 Internal Server Error, 502 Bad Gateway, 503 Service Unavailable, 504 Gateway Timeout, 429 Too Many Requests) com cabeçalho de rastreio `x-relay-chaos: simulated-failure`.
+- [x] Painel visual e badges de status em tempo real na barra de ferramentas e no modal de configurações.
+- [x] Testes unitários de cálculo de jitter e probabilidade de falhas (`test_calculate_delay_jitter`, `test_should_simulate_failure`).
 
 ### 🔹 Fase 6: Cliente HTTP & Replay de Chamadas
 - [ ] Ação de "Replay" no inspetor para reenviar qualquer chamada gravada.

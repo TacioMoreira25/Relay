@@ -18,7 +18,9 @@ class RelayState {
     targetHost: "127.0.0.1",
     targetPort: 3000,
     latencyMs: 0,
+    jitterMs: 0,
     simulateFailureRate: 0.0,
+    failureStatusCode: 500,
     autoExtractJwt: true,
   });
 
@@ -95,7 +97,6 @@ class RelayState {
 
   // Actions - JWTs
   addJwt(jwt: ExtractedJwt): void {
-    // Evita duplicatas do mesmo token, atualizando o detectedAt
     const existingIndex = this.jwts.findIndex(j => j.token === jwt.token);
     if (existingIndex >= 0) {
       this.jwts[existingIndex] = jwt;

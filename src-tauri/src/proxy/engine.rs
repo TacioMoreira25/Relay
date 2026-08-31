@@ -178,9 +178,62 @@ async fn handle_proxy_request(
 
     let _ = app.emit("relay:request", &exchange);
 
-    // Injeção de latência dinâmica configurada (Tokio async sleep)
-    if config.latency_ms > 0 {
-        tokio::time::sleep(tokio::time::Duration::from_millis(config.latency_ms)).await;
+    // Injeção de latência dinâmica configurada com Jitter (Chaos Engineering)
+    let total_delay_ms = calculate_delay(config.latency_ms, config.jitter_ms);
+    if total_delay_ms > 0 {
+        tokio::time::sleep(tokio::time::Duration::from_millis(total_delay_ms)).await;
+    }
+
+    // Simulação de Falhas Controladas (Chaos Failure Injection)
+    if should_simulate_failure(config.simulate_failure_rate) {
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+        let fail_status = StatusCode::from_u16(config.failure_status_code)
+            .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+
+        let simulated_body_str = format!(
+            r#"{{"error": "Simulated Chaos Failure", "statusCode": {}, "simulated": true, "durationMs": {}}}"#,
+            fail_status.as_u16(),
+            duration_ms
+        );
+        let simulated_bytes = Bytes::from(simulated_body_str.clone());
+
+        let simulated_res = InterceptedResponse {
+            id: Uuid::new_v4().to_string(),
+            request_id: req_id.clone(),
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            status_code: fail_status.as_u16(),
+            headers: vec![
+                HeaderEntry {
+                    key: "content-type".to_string(),
+                    value: "application/json".to_string(),
+                },
+                HeaderEntry {
+                    key: "x-relay-chaos".to_string(),
+                    value: "simulated-failure".to_string(),
+                },
+            ],
+            body: Some(simulated_body_str),
+            size_bytes: simulated_bytes.len(),
+            duration_ms,
+        };
+
+        if let Some(state) = app.try_state::<Arc<AppState>>() {
+            let mut exchs = state.exchanges.lock();
+            if let Some(item) = exchs.iter_mut().find(|e| e.id == req_id) {
+                item.response = Some(simulated_res.clone());
+                item.status = "completed".to_string();
+            }
+        }
+
+        let _ = app.emit("relay:response", &simulated_res);
+
+        let full_body = Full::new(simulated_bytes).map_err(|never| match never {});
+        return Ok(Response::builder()
+            .status(fail_status)
+            .header("content-type", "application/json")
+            .header("x-relay-chaos", "simulated-failure")
+            .body(BoxBody::new(full_body))
+            .unwrap());
     }
 
     // Encaminhamento transparente para o servidor Upstream
@@ -297,6 +350,28 @@ async fn handle_proxy_request(
     }
 }
 
+pub fn calculate_delay(base_latency_ms: u64, jitter_ms: u64) -> u64 {
+    if base_latency_ms == 0 && jitter_ms == 0 {
+        return 0;
+    }
+    if jitter_ms == 0 {
+        return base_latency_ms;
+    }
+    // Adiciona jitter aleatório entre 0 e jitter_ms
+    let random_jitter = fastrand::u64(0..=jitter_ms);
+    base_latency_ms.saturating_add(random_jitter)
+}
+
+pub fn should_simulate_failure(failure_rate: f32) -> bool {
+    if failure_rate <= 0.0 {
+        return false;
+    }
+    if failure_rate >= 1.0 {
+        return true;
+    }
+    fastrand::f32() < failure_rate
+}
+
 async fn forward_to_upstream(
     method: &hyper::Method,
     path_and_query: &str,
@@ -374,6 +449,21 @@ mod tests {
     use std::convert::Infallible;
     use tokio::net::TcpListener;
 
+    #[test]
+    fn test_calculate_delay_jitter() {
+        let delay = calculate_delay(100, 50);
+        assert!(delay >= 100 && delay <= 150);
+
+        assert_eq!(calculate_delay(0, 0), 0);
+        assert_eq!(calculate_delay(200, 0), 200);
+    }
+
+    #[test]
+    fn test_should_simulate_failure() {
+        assert!(!should_simulate_failure(0.0));
+        assert!(should_simulate_failure(1.0));
+    }
+
     #[tokio::test]
     async fn test_forward_to_upstream_success() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -403,7 +493,9 @@ mod tests {
             target_host: "127.0.0.1".to_string(),
             target_port: port,
             latency_ms: 0,
+            jitter_ms: 0,
             simulate_failure_rate: 0.0,
+            failure_status_code: 500,
             auto_extract_jwt: false,
         };
 
