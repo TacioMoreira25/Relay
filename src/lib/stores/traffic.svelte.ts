@@ -1,15 +1,48 @@
-import type { HttpExchange, ExtractedJwt, ProxyConfig, RouteRule, SavedRequestTemplate } from "$lib/types";
+import type { HttpExchange, ExtractedJwt, ProxyConfig, RouteRule, SavedRequestTemplate, TargetEnvironment, DiscoveredTarget } from "$lib/types";
+
+const SAVED_TARGETS_STORAGE_KEY = "relay_saved_environments_v1";
+
+function loadInitialSavedEnvironments(): TargetEnvironment[] {
+  try {
+    const raw = localStorage.getItem(SAVED_TARGETS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    // Ignora
+  }
+  return [];
+}
 
 class RelayState {
   exchanges = $state<HttpExchange[]>([]);
   selectedExchange = $state<HttpExchange | null>(null);
   
+  // Comparação Diff entre 2 requisições
+  diffCompareExchange = $state<HttpExchange | null>(null);
+
   // Coleção de Requisições Salvas / Templates
   savedTemplates = $state<SavedRequestTemplate[]>([]);
   selectedTemplate = $state<SavedRequestTemplate | null>(null);
 
   // Navegação Lateral: "history" (Tráfego Real) vs "collection" (Rotas Salvas)
   sidebarTab = $state<"history" | "collection">("history");
+
+  // Ambientes Salvos Persistidos (Inicia vazio)
+  savedEnvironments = $state<TargetEnvironment[]>(loadInitialSavedEnvironments());
+  
+  // Alvos Descobertos por Varredura Local de Portas
+  discoveredTargets = $state<DiscoveredTarget[]>([]);
+  isScanningTargets = $state<boolean>(false);
+
+  // Ambiente Atualmente Ativo (null se nenhum conectado)
+  activeTarget = $state<TargetEnvironment | null>(null);
+
+  // Variáveis capturadas dinamicamente das respostas (ex: id de customer, token, etc.)
+  extractedVariables = $state<Record<string, string>>({});
 
   jwts = $state<ExtractedJwt[]>([]);
   selectedJwt = $state<ExtractedJwt | null>(null);
@@ -19,7 +52,7 @@ class RelayState {
   // Filtros de Tráfego
   searchQuery = $state<string>("");
   methodFilter = $state<string>("ALL");
-  statusFilter = $state<string>("ALL"); // "ALL", "2xx", "3xx", "4xx", "5xx", "ERR"
+  statusFilter = $state<string>("ALL");
 
   config = $state<ProxyConfig>({
     listenPort: 8080,
@@ -33,6 +66,14 @@ class RelayState {
     routes: [],
   });
 
+  // Derived - Variáveis Ativas
+  activeVariables = $derived.by((): Record<string, string> => {
+    return {
+      baseUrl: `http://${this.config.targetHost}:${this.config.targetPort}`,
+      ...this.extractedVariables,
+    };
+  });
+
   // Derived - Estatísticas
   totalRequests = $derived(this.exchanges.length);
   totalTemplates = $derived(this.savedTemplates.length);
@@ -41,7 +82,7 @@ class RelayState {
   );
   totalJwts = $derived(this.jwts.length);
 
-  // Derived - Lista Filtrada do Histórico em Tempo Real
+  // Derived - Lista Filtrada do Histórico
   filteredExchanges = $derived(
     this.exchanges.filter(e => {
       if (this.methodFilter !== "ALL" && e.request.method.toUpperCase() !== this.methodFilter) {
@@ -75,7 +116,7 @@ class RelayState {
     })
   );
 
-  // Derived - Templates Filtrados por busca
+  // Derived - Templates Filtrados
   filteredTemplates = $derived(
     this.savedTemplates.filter(t => {
       if (this.methodFilter !== "ALL" && t.method.toUpperCase() !== this.methodFilter) {
@@ -94,6 +135,95 @@ class RelayState {
     })
   );
 
+  // Helper para substituir variáveis {{varName}} no texto
+  replaceVariables(text: string): string {
+    let result = text;
+    const vars = this.activeVariables;
+    for (const [key, value] of Object.entries(vars)) {
+      const pattern = new RegExp(`\\{\\{${key}\\}\\}`, "g");
+      result = result.replace(pattern, value);
+    }
+    return result;
+  }
+
+  // Auto-Captura de Campos em Respostas JSON (id, customerId, accountId, token, etc.)
+  extractVariablesFromResponse(bodyStr?: string): void {
+    if (!bodyStr || !bodyStr.trim()) return;
+    try {
+      const parsed = JSON.parse(bodyStr);
+      if (typeof parsed !== "object" || parsed === null) return;
+
+      const newVars: Record<string, string> = { ...this.extractedVariables };
+
+      const scanObj = (obj: Record<string, any>, prefix = "") => {
+        for (const [k, v] of Object.entries(obj)) {
+          if (typeof v === "string" || typeof v === "number") {
+            const keyName = prefix ? `${prefix}_${k}` : k;
+            newVars[keyName] = String(v);
+
+            // Mapeamentos diretos convenientes
+            if (k === "id" && !prefix) {
+              newVars["lastId"] = String(v);
+              newVars["customerId"] = String(v);
+            }
+            if (k === "accountId" || k === "sourceAccountId") {
+              newVars["accountId"] = String(v);
+              newVars["sourceAccountId"] = String(v);
+            }
+            if (k === "access_token" || k === "token") {
+              newVars["token"] = String(v);
+            }
+          } else if (typeof v === "object" && v !== null && !Array.isArray(v)) {
+            scanObj(v, k);
+          }
+        }
+      };
+
+      scanObj(parsed);
+      this.extractedVariables = newVars;
+    } catch {
+      // Body não é JSON válido, ignora
+    }
+  }
+
+  // Persiste ambientes salvos no localStorage
+  saveEnvironmentsToStorage(): void {
+    try {
+      localStorage.setItem(SAVED_TARGETS_STORAGE_KEY, JSON.stringify(this.savedEnvironments));
+    } catch (e) {
+      console.warn("Falha ao salvar ambientes no localStorage:", e);
+    }
+  }
+
+  addSavedEnvironment(env: TargetEnvironment): void {
+    this.savedEnvironments = [...this.savedEnvironments, env];
+    this.saveEnvironmentsToStorage();
+  }
+
+  updateSavedEnvironment(updated: TargetEnvironment): void {
+    this.savedEnvironments = this.savedEnvironments.map(e => e.id === updated.id ? updated : e);
+    this.saveEnvironmentsToStorage();
+    if (this.activeTarget?.id === updated.id) {
+      this.selectTarget(updated);
+    }
+  }
+
+  removeSavedEnvironment(id: string): void {
+    this.savedEnvironments = this.savedEnvironments.filter(e => e.id !== id);
+    this.saveEnvironmentsToStorage();
+    if (this.activeTarget?.id === id) {
+      this.activeTarget = null;
+    }
+  }
+
+  selectTarget(target: TargetEnvironment | null): void {
+    this.activeTarget = target;
+    if (target) {
+      this.config.targetHost = target.host;
+      this.config.targetPort = target.port;
+    }
+  }
+
   // Actions - Requisições
   addExchange(exchange: HttpExchange): void {
     this.exchanges = [exchange, ...this.exchanges];
@@ -104,6 +234,9 @@ class RelayState {
     if (item) {
       item.response = response;
       item.status = "completed";
+      if (response?.body) {
+        this.extractVariablesFromResponse(response.body);
+      }
     }
   }
 
@@ -122,6 +255,7 @@ class RelayState {
   clear(): void {
     this.exchanges = [];
     this.selectedExchange = null;
+    this.diffCompareExchange = null;
   }
 
   // Actions - Templates / Coleções
@@ -145,6 +279,11 @@ class RelayState {
       this.jwts[existingIndex] = jwt;
     } else {
       this.jwts = [jwt, ...this.jwts];
+    }
+    this.extractedVariables["token"] = jwt.token;
+    if (jwt.subject) {
+      this.extractedVariables["sub"] = jwt.subject;
+      this.extractedVariables["customerId"] = jwt.subject;
     }
   }
 

@@ -91,6 +91,7 @@ pub fn run() {
             commands::update_proxy_config,
             commands::get_proxy_config,
             commands::load_config_from_json,
+            commands::scan_active_targets,
             commands::parse_collection_json,
             commands::get_session_jwts,
             commands::clear_session_jwts,

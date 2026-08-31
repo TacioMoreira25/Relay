@@ -49,6 +49,10 @@ pub struct RouteRule {
     pub target_host: Option<String>, // Opcional, se ausente herda target_host global
     pub target_port: u16,            // Porta específica deste serviço (ex: 4000)
     pub latency_ms: Option<u64>,     // Latência específica da rota (opcional)
+    #[serde(default)]
+    pub is_mock: bool,               // Se true, responde diretamente sem ir ao upstream
+    pub mock_status_code: Option<u16>, // 200, 201, 400, etc.
+    pub mock_body: Option<String>,   // JSON ou string de mock
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

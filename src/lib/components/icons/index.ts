@@ -18,3 +18,7 @@ export { default as IconPlus } from "./Plus.svelte";
 export { default as IconWand2 } from "./Wand2.svelte";
 export { default as IconBookmark } from "./Bookmark.svelte";
 export { default as IconHistory } from "./History.svelte";
+export { default as IconCode } from "./Code.svelte";
+export { default as IconSplit } from "./Split.svelte";
+export { default as IconServer } from "./Server.svelte";
+export { default as IconPencil } from "./Pencil.svelte";

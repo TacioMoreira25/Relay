@@ -11,8 +11,9 @@ use tokio::time::{timeout, Duration};
 use uuid::Uuid;
 
 use crate::proxy::{
-    export_to_har, export_to_openapi, generate_root_ca, resolve_route_target, GeneratedCa,
-    HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig, ProxyServer,
+    export_to_har, export_to_openapi, generate_root_ca, resolve_route_target_full,
+    scan_local_targets, DiscoveredTarget, GeneratedCa, HeaderEntry, HttpExchange,
+    InterceptedRequest, InterceptedResponse, ProxyConfig, ProxyServer,
 };
 use crate::state::{extract_jwts_from_body, extract_jwts_from_headers, ExtractedJwt, SessionState};
 
@@ -74,6 +75,12 @@ pub async fn load_config_from_json(
         .map_err(|e| format!("Formato de arquivo JSON inválido: {}", e))?;
     *state.config.lock() = config.clone();
     Ok(config)
+}
+
+/// Escaneia portas locais de desenvolvimento ativas
+#[tauri::command]
+pub async fn scan_active_targets() -> Result<Vec<DiscoveredTarget>, String> {
+    Ok(scan_local_targets().await)
 }
 
 #[tauri::command]
@@ -193,7 +200,7 @@ pub struct ReplayRequestPayload {
     pub body: Option<String>,
 }
 
-/// Executa um replay direto para o servidor alvo de forma segura com timeout
+/// Executa um replay direto para o servidor alvo de forma segura com timeout ou mock
 #[tauri::command]
 pub async fn execute_replay(
     app: AppHandle,
@@ -237,8 +244,44 @@ pub async fn execute_replay(
     let _ = app.emit("relay:request", &exchange);
 
     // Resolve o host e porta de destino conforme as regras de rotas
-    let (target_host, target_port, _) = resolve_route_target(&payload.uri, &config);
-    let target_addr = format!("{}:{}", target_host, target_port);
+    let route_res = resolve_route_target_full(&payload.uri, &config);
+
+    if route_res.is_mock {
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+        let mock_body_str = route_res
+            .mock_body
+            .unwrap_or_else(|| r#"{"mock": true, "message": "Relay Mock Engine"}"#.to_string());
+        let mock_bytes = Bytes::from(mock_body_str.clone());
+
+        let intercepted_res = InterceptedResponse {
+            id: Uuid::new_v4().to_string(),
+            request_id: req_id.clone(),
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            status_code: route_res.mock_status,
+            headers: vec![
+                HeaderEntry {
+                    key: "content-type".to_string(),
+                    value: "application/json".to_string(),
+                },
+                HeaderEntry {
+                    key: "x-relay-mock".to_string(),
+                    value: "true".to_string(),
+                },
+            ],
+            body: Some(mock_body_str),
+            size_bytes: mock_bytes.len(),
+            duration_ms,
+        };
+
+        exchange.response = Some(intercepted_res.clone());
+        exchange.status = "completed".to_string();
+
+        state.exchanges.lock().push(exchange.clone());
+        let _ = app.emit("relay:response", &intercepted_res);
+        return Ok(exchange);
+    }
+
+    let target_addr = format!("{}:{}", route_res.host, route_res.port);
 
     // Conexão com timeout de 5 segundos
     let connect_res = timeout(Duration::from_secs(5), TcpStream::connect(&target_addr)).await;

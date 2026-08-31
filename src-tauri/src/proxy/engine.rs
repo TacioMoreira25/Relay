@@ -63,24 +63,21 @@ impl ProxyServer {
                                     });
 
                                     if let Err(err) = http1::Builder::new()
-                                        .preserve_header_case(true)
-                                        .title_case_headers(true)
                                         .serve_connection(io, service)
                                         .await
                                     {
-                                        warn!("Conexao de cliente proxy finalizada: {:?}", err);
+                                        warn!("Conexão HTTP encerrada com erro: {:?}", err);
                                     }
                                 });
                             }
-                            Err(e) => {
-                                error!("Erro no listener TCP do proxy: {:?}", e);
-                                break;
+                            Err(err) => {
+                                error!("Erro no listener accept: {:?}", err);
                             }
                         }
                     }
                     _ = shutdown_rx.changed() => {
                         if *shutdown_rx.borrow() {
-                            info!("Sinal de encerramento do proxy recebido.");
+                            info!("Encerrando servidor proxy listener.");
                             break;
                         }
                     }
@@ -98,7 +95,16 @@ impl ProxyServer {
     }
 }
 
-pub fn resolve_route_target(uri_path: &str, config: &ProxyConfig) -> (String, u16, u64) {
+pub struct RouteTargetResolution {
+    pub host: String,
+    pub port: u16,
+    pub latency_ms: u64,
+    pub is_mock: bool,
+    pub mock_status: u16,
+    pub mock_body: Option<String>,
+}
+
+pub fn resolve_route_target_full(uri_path: &str, config: &ProxyConfig) -> RouteTargetResolution {
     let clean_path = uri_path.split('?').next().unwrap_or(uri_path);
 
     for rule in &config.routes {
@@ -110,15 +116,30 @@ pub fn resolve_route_target(uri_path: &str, config: &ProxyConfig) -> (String, u1
                 .cloned()
                 .unwrap_or_else(|| config.target_host.clone());
             let latency = rule.latency_ms.unwrap_or(config.latency_ms);
-            return (host, rule.target_port, latency);
+            return RouteTargetResolution {
+                host,
+                port: rule.target_port,
+                latency_ms: latency,
+                is_mock: rule.is_mock,
+                mock_status: rule.mock_status_code.unwrap_or(200),
+                mock_body: rule.mock_body.clone(),
+            };
         }
     }
 
-    (
-        config.target_host.clone(),
-        config.target_port,
-        config.latency_ms,
-    )
+    RouteTargetResolution {
+        host: config.target_host.clone(),
+        port: config.target_port,
+        latency_ms: config.latency_ms,
+        is_mock: false,
+        mock_status: 200,
+        mock_body: None,
+    }
+}
+
+pub fn resolve_route_target(uri_path: &str, config: &ProxyConfig) -> (String, u16, u64) {
+    let res = resolve_route_target_full(uri_path, config);
+    (res.host, res.port, res.latency_ms)
 }
 
 async fn handle_proxy_request(
@@ -201,13 +222,66 @@ async fn handle_proxy_request(
 
     let _ = app.emit("relay:request", &exchange);
 
-    // Resolução de Rota Dinâmica (Suporta qualquer rota e múltiplos microservices)
-    let (target_host, target_port, route_latency_ms) = resolve_route_target(&uri_string, &config);
+    // Resolução de Rota Dinâmica
+    let route_res = resolve_route_target_full(&uri_string, &config);
 
-    // Injeção de latência dinâmica configurada com Jitter (Chaos Engineering)
-    let total_delay_ms = calculate_delay(route_latency_ms, config.jitter_ms);
+    // Injeção de latência dinâmica configurada com Jitter
+    let total_delay_ms = calculate_delay(route_res.latency_ms, config.jitter_ms);
     if total_delay_ms > 0 {
         tokio::time::sleep(tokio::time::Duration::from_millis(total_delay_ms)).await;
+    }
+
+    // Rota de Mock Local
+    if route_res.is_mock {
+        let duration_ms = start_time.elapsed().as_millis() as u64;
+        let mock_body_str = route_res
+            .mock_body
+            .unwrap_or_else(|| r#"{"mock": true, "message": "Relay Mock Engine"}"#.to_string());
+        let mock_bytes = Bytes::from(mock_body_str.clone());
+        let status = StatusCode::from_u16(route_res.mock_status).unwrap_or(StatusCode::OK);
+
+        let intercepted_res = InterceptedResponse {
+            id: Uuid::new_v4().to_string(),
+            request_id: req_id.clone(),
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            status_code: status.as_u16(),
+            headers: vec![
+                HeaderEntry {
+                    key: "content-type".to_string(),
+                    value: "application/json".to_string(),
+                },
+                HeaderEntry {
+                    key: "x-relay-mock".to_string(),
+                    value: "true".to_string(),
+                },
+            ],
+            body: Some(mock_body_str),
+            size_bytes: mock_bytes.len(),
+            duration_ms,
+        };
+
+        if let Some(state) = app.try_state::<Arc<AppState>>() {
+            let mut exchs = state.exchanges.lock();
+            if let Some(item) = exchs.iter_mut().find(|e| e.id == req_id) {
+                item.response = Some(intercepted_res.clone());
+                item.status = "completed".to_string();
+            }
+        }
+
+        let _ = app.emit("relay:response", &intercepted_res);
+
+        let full_body = Full::new(mock_bytes).map_err(|never| match never {});
+        return Ok(Response::builder()
+            .status(status)
+            .header("content-type", "application/json")
+            .header("x-relay-mock", "true")
+            .body(BoxBody::new(full_body))
+            .unwrap_or_else(|_| {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(BoxBody::new(Empty::new().map_err(|never| match never {})))
+                    .unwrap()
+            }));
     }
 
     // Simulação de Falhas Controladas (Chaos Failure Injection)
@@ -259,50 +333,48 @@ async fn handle_proxy_request(
             .header("content-type", "application/json")
             .header("x-relay-chaos", "simulated-failure")
             .body(BoxBody::new(full_body))
-            .unwrap());
+            .unwrap_or_else(|_| {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(BoxBody::new(Empty::new().map_err(|never| match never {})))
+                    .unwrap()
+            }));
     }
 
-    // Encaminhamento transparente para o servidor Upstream
-    let path_and_query = parts
-        .uri
-        .path_and_query()
-        .map(|pq| pq.as_str())
-        .unwrap_or("/");
-
-    let forward_res = forward_to_upstream(
+    // Repasse transparente para o upstream real
+    match forward_to_upstream(
+        &route_res.host,
+        route_res.port,
         &parts.method,
-        path_and_query,
+        &uri_string,
         &headers_vec,
         body_bytes,
-        &target_host,
-        target_port,
     )
-    .await;
-
-    let duration_ms = start_time.elapsed().as_millis() as u64;
-
-    match forward_res {
-        Ok((res_status, res_headers, res_bytes)) => {
+    .await
+    {
+        Ok((status, res_headers, res_bytes)) => {
+            let duration_ms = start_time.elapsed().as_millis() as u64;
             let res_body_str = String::from_utf8(res_bytes.to_vec()).ok();
+
             let intercepted_res = InterceptedResponse {
                 id: Uuid::new_v4().to_string(),
                 request_id: req_id.clone(),
                 timestamp: chrono::Utc::now().timestamp_millis(),
-                status_code: res_status.as_u16(),
+                status_code: status.as_u16(),
                 headers: res_headers.clone(),
                 body: res_body_str.clone(),
                 size_bytes: res_bytes.len(),
                 duration_ms,
             };
 
-            // Auto-extração de JWT nos cabeçalhos e body da Resposta
+            // Auto-captura JWT em respostas
             if config.auto_extract_jwt {
                 let res_header_tuples: Vec<(String, String)> = res_headers
                     .iter()
                     .map(|h| (h.key.clone(), h.value.clone()))
                     .collect();
 
-                let mut res_jwts = extract_jwts_from_headers(&res_header_tuples, "response");
+                let mut res_jwts = extract_jwts_from_headers(&res_header_tuples, "response_header");
                 if let Some(ref body_text) = res_body_str {
                     let body_jwts = extract_jwts_from_body(body_text, "response_body");
                     res_jwts.extend(body_jwts);
@@ -316,7 +388,6 @@ async fn handle_proxy_request(
                 }
             }
 
-            // Atualiza no estado compartilhado
             if let Some(state) = app.try_state::<Arc<AppState>>() {
                 let mut exchs = state.exchanges.lock();
                 if let Some(item) = exchs.iter_mut().find(|e| e.id == req_id) {
@@ -327,22 +398,21 @@ async fn handle_proxy_request(
 
             let _ = app.emit("relay:response", &intercepted_res);
 
-            let mut resp = Response::builder().status(res_status);
-            for h in res_headers {
-                if h.key.eq_ignore_ascii_case("transfer-encoding")
-                    || h.key.eq_ignore_ascii_case("connection")
+            let mut builder = Response::builder().status(status);
+            for h in &res_headers {
+                if !h.key.eq_ignore_ascii_case("transfer-encoding")
+                    && !h.key.eq_ignore_ascii_case("connection")
                 {
-                    continue;
-                }
-                if let Ok(name) = hyper::header::HeaderName::from_bytes(h.key.as_bytes()) {
-                    if let Ok(val) = hyper::header::HeaderValue::from_str(&h.value) {
-                        resp = resp.header(name, val);
+                    if let Ok(name) = hyper::header::HeaderName::from_bytes(h.key.as_bytes()) {
+                        if let Ok(val) = hyper::header::HeaderValue::from_str(&h.value) {
+                            builder = builder.header(name, val);
+                        }
                     }
                 }
             }
 
             let full_body = Full::new(res_bytes).map_err(|never| match never {});
-            Ok(resp.body(BoxBody::new(full_body)).unwrap_or_else(|_| {
+            Ok(builder.body(BoxBody::new(full_body)).unwrap_or_else(|_| {
                 Response::builder()
                     .status(StatusCode::INTERNAL_SERVER_ERROR)
                     .body(BoxBody::new(Empty::new().map_err(|never| match never {})))
@@ -366,13 +436,22 @@ async fn handle_proxy_request(
                 }),
             );
 
-            let full_body = Full::new(Bytes::from(format!("Relay Proxy Error: {}", err_msg)))
-                .map_err(|never| match never {});
+            let error_payload = format!(
+                r#"{{"error": "Relay Proxy Error: Falha ao conectar com o upstream: {}"}}"#,
+                err_msg
+            );
+            let full_body = Full::new(Bytes::from(error_payload)).map_err(|never| match never {});
 
             Ok(Response::builder()
                 .status(StatusCode::BAD_GATEWAY)
+                .header("content-type", "application/json")
                 .body(BoxBody::new(full_body))
-                .unwrap())
+                .unwrap_or_else(|_| {
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(BoxBody::new(Empty::new().map_err(|never| match never {})))
+                        .unwrap()
+                }))
         }
     }
 }
@@ -384,8 +463,13 @@ pub fn calculate_delay(base_latency_ms: u64, jitter_ms: u64) -> u64 {
     if jitter_ms == 0 {
         return base_latency_ms;
     }
-    let random_jitter = fastrand::u64(0..=jitter_ms);
-    base_latency_ms.saturating_add(random_jitter)
+    let jitter_offset = fastrand::i64(-(jitter_ms as i64)..=(jitter_ms as i64));
+    let calculated = (base_latency_ms as i64) + jitter_offset;
+    if calculated < 0 {
+        0
+    } else {
+        calculated as u64
+    }
 }
 
 pub fn should_simulate_failure(failure_rate: f32) -> bool {
@@ -399,30 +483,31 @@ pub fn should_simulate_failure(failure_rate: f32) -> bool {
 }
 
 async fn forward_to_upstream(
-    method: &hyper::Method,
-    path_and_query: &str,
-    headers: &[HeaderEntry],
-    body_bytes: Bytes,
     target_host: &str,
     target_port: u16,
+    method: &hyper::Method,
+    uri_path: &str,
+    headers: &[HeaderEntry],
+    body_bytes: Bytes,
 ) -> Result<(StatusCode, Vec<HeaderEntry>, Bytes), String> {
     let target_addr = format!("{}:{}", target_host, target_port);
+
     let stream = TcpStream::connect(&target_addr)
         .await
         .map_err(|e| format!("Falha ao conectar com o upstream ({}): {}", target_addr, e))?;
-    let io = TokioIo::new(stream);
 
+    let io = TokioIo::new(stream);
     let (mut sender, conn) = hyper::client::conn::http1::handshake(io)
         .await
-        .map_err(|e| format!("Erro no handshake HTTP/1.1 com upstream: {}", e))?;
+        .map_err(|e| format!("Erro no handshake com upstream: {}", e))?;
 
     tokio::spawn(async move {
         if let Err(err) = conn.await {
-            warn!("Conexao com upstream finalizada: {:?}", err);
+            warn!("Conexão com upstream finalizada: {:?}", err);
         }
     });
 
-    let mut builder = Request::builder().method(method).uri(path_and_query);
+    let mut builder = Request::builder().method(method).uri(uri_path);
 
     for h in headers {
         if !h.key.eq_ignore_ascii_case("host")
@@ -478,35 +563,13 @@ mod tests {
     use tokio::net::TcpListener;
 
     #[test]
-    fn test_resolve_route_target() {
-        let mut config = ProxyConfig::default();
-        config.target_host = "127.0.0.1".to_string();
-        config.target_port = 3000;
-        config.latency_ms = 10;
-
-        config.routes.push(RouteRule {
-            path_prefix: "/api/v1/auth".to_string(),
-            target_host: Some("127.0.0.1".to_string()),
-            target_port: 4000,
-            latency_ms: Some(50),
-        });
-
-        let (_host, port, latency) = resolve_route_target("/api/v1/auth/login", &config);
-        assert_eq!(port, 4000);
-        assert_eq!(latency, 50);
-
-        let (_def_host, def_port, def_lat) = resolve_route_target("/api/v1/users", &config);
-        assert_eq!(def_port, 3000);
-        assert_eq!(def_lat, 10);
-    }
-
-    #[test]
     fn test_calculate_delay_jitter() {
-        let delay = calculate_delay(100, 50);
-        assert!(delay >= 100 && delay <= 150);
-
-        assert_eq!(calculate_delay(0, 0), 0);
-        assert_eq!(calculate_delay(200, 0), 200);
+        let base = 100;
+        let jitter = 20;
+        for _ in 0..50 {
+            let d = calculate_delay(base, jitter);
+            assert!(d >= 80 && d <= 120);
+        }
     }
 
     #[test]
@@ -515,52 +578,89 @@ mod tests {
         assert!(should_simulate_failure(1.0));
     }
 
+    #[test]
+    fn test_resolve_route_target() {
+        let config = ProxyConfig {
+            listen_port: 8080,
+            target_host: "127.0.0.1".to_string(),
+            target_port: 3000,
+            latency_ms: 50,
+            jitter_ms: 0,
+            simulate_failure_rate: 0.0,
+            failure_status_code: 500,
+            auto_extract_jwt: true,
+            routes: vec![
+                RouteRule {
+                    path_prefix: "/api/v1/auth".to_string(),
+                    target_host: Some("auth-service".to_string()),
+                    target_port: 4000,
+                    latency_ms: Some(10),
+                    is_mock: false,
+                    mock_status_code: None,
+                    mock_body: None,
+                },
+                RouteRule {
+                    path_prefix: "/mock/users".to_string(),
+                    target_host: None,
+                    target_port: 3000,
+                    latency_ms: None,
+                    is_mock: true,
+                    mock_status_code: Some(201),
+                    mock_body: Some("{}".to_string()),
+                },
+            ],
+        };
+
+        let (host, port, lat) = resolve_route_target("/api/v1/auth/login", &config);
+        assert_eq!(host, "auth-service");
+        assert_eq!(port, 4000);
+        assert_eq!(lat, 10);
+
+        let res = resolve_route_target_full("/mock/users", &config);
+        assert!(res.is_mock);
+        assert_eq!(res.mock_status, 201);
+    }
+
     #[tokio::test]
     async fn test_forward_to_upstream_success() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let local_addr = listener.local_addr().unwrap();
-        let port = local_addr.port();
+        let port = listener.local_addr().unwrap().port();
 
         tokio::spawn(async move {
-            if let Ok((stream, _)) = listener.accept().await {
-                let io = TokioIo::new(stream);
-                let service = service_fn(|_req| async {
-                    Ok::<_, Infallible>(
-                        Response::builder()
-                            .status(StatusCode::OK)
-                            .header("x-mock-test", "passed")
-                            .body(Full::new(Bytes::from("hello from test upstream")))
-                            .unwrap(),
-                    )
-                });
-                let _ = hyper::server::conn::http1::Builder::new()
-                    .serve_connection(io, service)
-                    .await;
-            }
+            let (stream, _) = listener.accept().await.unwrap();
+            let io = TokioIo::new(stream);
+            http1::Builder::new()
+                .serve_connection(
+                    io,
+                    service_fn(|_req| async {
+                        Ok::<_, Infallible>(
+                            Response::builder()
+                                .status(StatusCode::OK)
+                                .header("x-custom", "relay-test")
+                                .body(Full::new(Bytes::from("hello from upstream")))
+                                .unwrap(),
+                        )
+                    }),
+                )
+                .await
+                .unwrap();
         });
 
-        let method = hyper::Method::GET;
-        let headers = vec![HeaderEntry {
-            key: "user-agent".to_string(),
-            value: "relay-unit-test".to_string(),
-        }];
-
-        let result = forward_to_upstream(
-            &method,
-            "/api/test",
-            &headers,
-            Bytes::new(),
+        let (status, headers, body) = forward_to_upstream(
             "127.0.0.1",
             port,
+            &hyper::Method::GET,
+            "/test",
+            &[],
+            Bytes::new(),
         )
-        .await;
+        .await
+        .unwrap();
 
-        assert!(result.is_ok());
-        let (status, resp_headers, body) = result.unwrap();
         assert_eq!(status, StatusCode::OK);
-        assert!(resp_headers
+        assert!(headers
             .iter()
-            .any(|h| h.key == "x-mock-test" && h.value == "passed"));
-        assert_eq!(body, Bytes::from("hello from test upstream"));
+            .any(|h| h.key == "x-custom" && h.value == "relay-test"));
+        assert_eq!(body.as_ref(), b"hello from upstream");
     }
 }

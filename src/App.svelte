@@ -6,6 +6,7 @@
   import TipsModal from "$lib/components/TipsModal.svelte";
   import ReplayModal from "$lib/components/ReplayModal.svelte";
   import JwtManager from "$lib/components/JwtManager.svelte";
+  import EnvironmentSelector from "$lib/components/EnvironmentSelector.svelte";
   import {
     IconActivity,
     IconShield,
@@ -124,20 +125,20 @@
 </script>
 
 <main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-200 font-sans select-none antialiased">
-  <!-- Minimalist Top Bar -->
-  <header class="h-11 border-b border-zinc-800/80 bg-zinc-900/60 backdrop-blur-md px-3 flex items-center justify-between">
-    <!-- Brand & Navigation -->
-    <div class="flex items-center space-x-5">
-      <div class="flex items-center space-x-2">
-        <div class="w-2.5 h-2.5 rounded-full {relayState.isProxyRunning ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)] animate-pulse' : 'bg-zinc-600'}"></div>
+  <!-- Minimalist Clean TopBar -->
+  <header class="h-12 border-b border-zinc-800/80 bg-zinc-900/70 backdrop-blur-md px-4 flex items-center justify-between">
+    <!-- Brand, Views & Smart Environment Dropdown -->
+    <div class="flex items-center space-x-4">
+      <div class="flex items-center space-x-2 mr-2">
+        <div class="w-2.5 h-2.5 rounded-full {relayState.isProxyRunning ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)] animate-pulse' : 'bg-zinc-600'}"></div>
         <span class="text-xs font-bold tracking-wider text-zinc-100 uppercase">Relay</span>
       </div>
 
       <!-- Segmented View Tabs -->
-      <nav class="flex items-center space-x-1 bg-zinc-950/80 p-0.5 rounded-md border border-zinc-800/80 text-xs">
+      <nav class="flex items-center space-x-1 bg-zinc-950/80 p-0.5 rounded-lg border border-zinc-800/80 text-xs">
         <button
           onclick={() => (relayState.activeView = "traffic")}
-          class="px-2.5 py-1 rounded transition-all flex items-center space-x-1.5 {relayState.activeView === 'traffic' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="px-3 py-1 rounded-md transition-all flex items-center space-x-1.5 {relayState.activeView === 'traffic' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
         >
           <IconActivity size={13} />
           <span>Tráfego</span>
@@ -150,7 +151,7 @@
 
         <button
           onclick={() => (relayState.activeView = "jwt")}
-          class="px-2.5 py-1 rounded transition-all flex items-center space-x-1.5 {relayState.activeView === 'jwt' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="px-3 py-1 rounded-md transition-all flex items-center space-x-1.5 {relayState.activeView === 'jwt' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
         >
           <IconShield size={13} />
           <span>Sessão & JWT</span>
@@ -161,6 +162,9 @@
           {/if}
         </button>
       </nav>
+
+      <!-- Dropdown Inteligente de Ambientes e Auto-Descoberta de Portas -->
+      <EnvironmentSelector />
     </div>
 
     <!-- Actions & Controls -->
@@ -168,66 +172,55 @@
       <!-- Nova Requisição Direta -->
       <button
         onclick={() => { activeTestingTemplate = null; isNewRequestOpen = true; }}
-        class="text-xs px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 transition-colors flex items-center space-x-1.5 cursor-pointer"
+        class="text-xs px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
         title="Criar e disparar nova requisição HTTP direta (Ctrl+N)"
       >
         <IconPlus size={13} class="text-indigo-400" />
         <span class="text-[11px] font-medium">Nova Requisição</span>
       </button>
 
-      <!-- Route Config Button -->
+      <!-- Sutil Badge de Roteamento -->
       <button
         onclick={() => (isConfigOpen = true)}
-        class="flex items-center space-x-2 text-[11px] font-mono bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 px-2.5 py-1 rounded-md text-zinc-300 transition-colors cursor-pointer"
-        title="Configurações de portas, rotas e chaos simulator"
+        class="flex items-center space-x-1.5 text-[11px] font-mono text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded-md hover:bg-zinc-800/60 transition-colors cursor-pointer"
+        title="Configurações de portas, rotas, mocks e chaos simulator"
       >
-        <IconSettings size={13} class="text-zinc-400" />
-        <span class="text-zinc-400">:{relayState.config.listenPort}</span>
-        <span class="text-zinc-600">→</span>
-        <span class="text-indigo-400">{relayState.config.targetHost}:{relayState.config.targetPort}</span>
-        {#if relayState.config.latencyMs > 0 || relayState.config.jitterMs > 0}
-          <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-sans">
-            +{relayState.config.latencyMs}{relayState.config.jitterMs > 0 ? `±${relayState.config.jitterMs}` : ""}ms
-          </span>
-        {/if}
-        {#if relayState.config.simulateFailureRate > 0}
-          <span class="text-[10px] px-1.5 py-0.2 rounded bg-rose-500/10 text-rose-300 border border-rose-500/20 font-sans font-medium">
-            {Math.round(relayState.config.simulateFailureRate * 100)}% {relayState.config.failureStatusCode}
-          </span>
+        <IconSettings size={13} class="text-zinc-500" />
+        <span>:{relayState.config.listenPort} → {relayState.config.targetHost}:{relayState.config.targetPort}</span>
+        {#if relayState.config.routes.some(r => r.isMock)}
+          <span class="text-[9px] px-1 py-0.2 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-sans">Mock</span>
         {/if}
       </button>
 
-      <!-- Export / HTTPS Button -->
+      <!-- Ações Secundárias (Icon Only com Tooltip) -->
       <button
         onclick={() => (isExportOpen = true)}
-        class="text-xs px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 transition-colors flex items-center space-x-1.5 cursor-pointer"
-        title="Exportar HAR / OpenAPI ou Gerenciar Certificados (Ctrl+E)"
+        class="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+        title="Exportar HAR / OpenAPI ou Certificados HTTPS (Ctrl+E)"
       >
-        <IconDownload size={13} />
-        <span class="hidden md:inline text-[11px]">Exportar</span>
+        <IconDownload size={14} />
       </button>
 
-      <!-- Tips & Shortcuts Button -->
       <button
         onclick={() => (isTipsOpen = true)}
-        class="p-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
-        title="Guia de Dicas & Atalhos de Teclado (Ctrl+/)"
+        class="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+        title="Guia Rápido & Atalhos (Ctrl+/)"
       >
         <IconHelpCircle size={14} />
       </button>
 
-      <!-- Primary Toggle Proxy Button -->
+      <!-- Botão Iniciar com Destaque Total -->
       <button
         onclick={toggleProxy}
-        class="text-xs px-3 py-1 rounded-md font-medium flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer {relayState.isProxyRunning ? 'bg-rose-500/10 text-rose-300 border border-rose-500/30 hover:bg-rose-500/20' : 'bg-indigo-600 text-white hover:bg-indigo-500'}"
+        class="text-xs px-3.5 py-1.5 rounded-md font-medium flex items-center space-x-1.5 transition-all shadow-md cursor-pointer {relayState.isProxyRunning ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold shadow-[0_0_12px_rgba(16,185,129,0.4)]' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}"
         title="Atalho: Ctrl+P"
       >
         {#if relayState.isProxyRunning}
-          <IconSquare size={12} class="text-rose-400" />
-          <span>Parar</span>
+          <IconSquare size={12} class="fill-current" />
+          <span>Ativo (:8080)</span>
         {:else}
           <IconPlay size={12} class="fill-current" />
-          <span>Iniciar</span>
+          <span>Iniciar Proxy</span>
         {/if}
       </button>
     </div>
@@ -238,12 +231,12 @@
     {#if relayState.activeView === "traffic"}
       <!-- Left Column: Request List with History / Collection Segmented Tabs -->
       <div class="w-80 border-r border-zinc-800/80 h-full bg-zinc-950">
-        <RequestList onOpenTemplate={handleOpenTemplate} />
+        <RequestList onOpenTemplate={handleOpenTemplate} onOpenNewRequest={() => { activeTestingTemplate = null; isNewRequestOpen = true; }} />
       </div>
 
-      <!-- Right Column: Inspector -->
+      <!-- Right Column: Inspector or Educational Empty State -->
       <div class="flex-1 h-full bg-zinc-950">
-        <Inspector />
+        <Inspector onOpenNewRequest={() => { activeTestingTemplate = null; isNewRequestOpen = true; }} onToggleProxy={toggleProxy} />
       </div>
     {:else}
       <!-- JWT Manager View -->

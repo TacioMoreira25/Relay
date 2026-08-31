@@ -5,45 +5,50 @@
 
   const shortcuts = [
     { key: "Ctrl + P", desc: "Iniciar / Parar o Proxy HTTP" },
-    { key: "Ctrl + K", desc: "Focar e filtrar campo de busca de tráfego" },
-    { key: "Ctrl + L", desc: "Limpar histórico de requisições capturadas" },
-    { key: "Ctrl + E", desc: "Abrir modal de Exportação (HAR / OpenAPI) & Certificados HTTPS" },
+    { key: "Ctrl + N", desc: "Criar e testar nova requisição direta" },
+    { key: "Ctrl + K", desc: "Focar no campo de busca de tráfego" },
+    { key: "Ctrl + L", desc: "Limpar histórico de requisições" },
+    { key: "Ctrl + E", desc: "Exportar HAR / OpenAPI & Certificados" },
     { key: "Ctrl + /", desc: "Abrir este painel de atalhos e dicas" },
   ];
 
   const tips = [
     {
       title: "Substituto Leve do Postman (1-Click Replay)",
-      desc: "Clique em qualquer chamada na lista lateral e depois em 'Replay' para abrir o editor de parâmetros, alterar JSONs e reenviar requisições instantaneamente sem recriá-las do zero.",
+      desc: "Clique em 'Replay' em qualquer chamada para alterar JSONs e testar rotas sem recriá-las.",
       icon: IconTerminal,
+      color: "text-sky-400",
     },
     {
-      title: "Auto-Injeção e Decodificação de JWT",
-      desc: "Faça login no seu app web ou mobile e o Relay capturará os tokens JWT automaticamente. No modal de Replay, clique em 'Auto-Injetar JWT' para autenticar chamadas sem copiar e colar tokens.",
+      title: "Auto-Injeção e Extração Dinâmica de JWT / IDs",
+      desc: "IDs e Tokens gerados em logins ou cadastros são encadeados automaticamente nas próximas chamadas.",
       icon: IconShield,
+      color: "text-amber-400",
     },
     {
-      title: "Testes de Resiliência & Loading States (Chaos)",
-      desc: "No menu de configurações, defina 'Latência: 500ms ± 100ms' para testar skeletons/spinners de carregamento na UI ou injete 'Taxa de Falhas: 20% (503)' para testar tratamentos de erro no frontend.",
+      title: "Mocks Locais & Chaos Simulator",
+      desc: "Simule rotas antes do backend estar pronto ou injete latência e taxas de falha (5xx) na UI.",
       icon: IconActivity,
+      color: "text-rose-400",
     },
     {
-      title: "Exportação de Documentação OpenAPI e HAR",
-      desc: "Pressione Ctrl+E para exportar sua sessão em formato OpenAPI 3.0 (Swagger) para documentação automática de endpoints ou em HAR 1.2 para compartilhar bugs com o time de QA.",
+      title: "Exportação de OpenAPI 3.0 & HAR",
+      desc: "Gere especificações Swagger e arquivos HAR 1.2 completos para compartilhar com seu time.",
       icon: IconFileJson,
+      color: "text-indigo-400",
     },
   ];
 </script>
 
 {#if isOpen}
-  <div class="fixed inset-0 bg-black/70 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-    <div class="bg-zinc-900 border border-zinc-800 rounded-xl max-w-xl w-full p-5 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
+  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+    <div class="bg-zinc-900 border border-zinc-800 rounded-xl max-w-lg w-full p-5 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
       <!-- Modal Header -->
       <div class="flex items-center justify-between border-b border-zinc-800 pb-3 select-none">
         <div class="flex items-center space-x-2">
           <IconCommand size={14} class="text-indigo-400" />
           <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-100">
-            Guia Rápido & Atalhos de Teclado
+            Guia Rápido & Atalhos
           </h3>
         </div>
         <button
@@ -55,54 +60,52 @@
       </div>
 
       <!-- Modal Body -->
-      <div class="flex-1 overflow-y-auto space-y-5 pr-1 text-xs">
-        <!-- Atalhos de Teclado -->
+      <div class="flex-1 overflow-y-auto space-y-4 pr-1 text-xs">
+        <!-- Tabela Limpa de Atalhos -->
         <div class="space-y-2">
           <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400 select-none block">
             Atalhos do Teclado
           </span>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {#each shortcuts as s}
-              <div class="flex items-center justify-between bg-zinc-950 p-2.5 rounded-lg border border-zinc-800/80">
-                <span class="text-zinc-400 text-[11px]">{s.desc}</span>
-                <kbd class="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-200 font-mono text-[10px] font-semibold shrink-0 ml-2">
-                  {s.key}
-                </kbd>
-              </div>
-            {/each}
+          <div class="border border-zinc-800/80 rounded-lg overflow-hidden bg-zinc-900/40">
+            <table class="w-full text-left text-xs">
+              <tbody class="divide-y divide-zinc-800/40">
+                {#each shortcuts as s}
+                  <tr class="hover:bg-zinc-900/60 transition-colors">
+                    <td class="py-2 px-3 text-zinc-300 text-[11px]">{s.desc}</td>
+                    <td class="py-2 px-3 text-right">
+                      <kbd class="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-200 font-mono text-[10px] font-semibold">
+                        {s.key}
+                      </kbd>
+                    </td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        <!-- Dicas de Uso Diário -->
-        <div class="space-y-2.5 pt-2 border-t border-zinc-800/80">
+        <!-- Lista Escaneável de Dicas -->
+        <div class="space-y-2 pt-2 border-t border-zinc-800/80">
           <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400 select-none block">
-            Dicas para o Fluxo Diário Fullstack
+            Recursos Principais
           </span>
           <div class="space-y-2">
             {#each tips as t}
               {@const IconComp = t.icon}
-              <div class="p-3 bg-zinc-950 border border-zinc-800/80 rounded-lg space-y-1">
-                <div class="flex items-center space-x-2 text-zinc-200 font-semibold text-xs">
-                  <IconComp size={13} class="text-indigo-400 shrink-0" />
-                  <span>{t.title}</span>
+              <div class="flex items-start space-x-3 p-2.5 bg-zinc-900/40 border border-zinc-800/60 rounded-lg">
+                <div class="p-1.5 rounded-md bg-zinc-800 border border-zinc-700/80 shrink-0 mt-0.5">
+                  <IconComp size={13} class={t.color} />
                 </div>
-                <p class="text-[11px] text-zinc-400 leading-relaxed pl-5">
-                  {t.desc}
-                </p>
+                <div class="space-y-0.5">
+                  <div class="text-xs font-semibold text-zinc-200">{t.title}</div>
+                  <p class="text-[11px] text-zinc-400 leading-relaxed">
+                    {t.desc}
+                  </p>
+                </div>
               </div>
             {/each}
           </div>
         </div>
-      </div>
-
-      <!-- Footer -->
-      <div class="flex items-center justify-end pt-3 border-t border-zinc-800 select-none">
-        <button
-          onclick={() => (isOpen = false)}
-          class="text-xs px-4 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
-        >
-          Entendi
-        </button>
       </div>
     </div>
   </div>

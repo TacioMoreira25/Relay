@@ -51,6 +51,28 @@ export interface RouteRule {
   targetHost?: string;
   targetPort: number;
   latencyMs?: number;
+  isMock?: boolean;
+  mockStatusCode?: number;
+  mockBody?: string;
+}
+
+export interface TargetEnvironment {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  isHttps: boolean;
+  isActive: boolean;
+  type: "auto" | "saved" | "mock";
+}
+
+export interface DiscoveredTarget {
+  id: string;
+  label: string;
+  host: string;
+  port: number;
+  isActive: boolean;
+  source: "auto_discovered" | "manual" | "remote";
 }
 
 export interface ProxyConfig {

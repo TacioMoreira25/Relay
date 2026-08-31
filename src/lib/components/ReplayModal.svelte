@@ -1,7 +1,7 @@
 <script lang="ts">
   import { relayState } from "$lib/stores/traffic.svelte";
   import type { HeaderEntry, HttpExchange, HttpMethod, SavedRequestTemplate } from "$lib/types";
-  import { IconPlay, IconKey, IconWand2 } from "$lib/components/icons";
+  import { IconPlay, IconKey, IconWand2, IconSparkles } from "$lib/components/icons";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
@@ -22,6 +22,10 @@
   let isSending = $state<boolean>(false);
   let statusMessage = $state<string | null>(null);
 
+  // Variáveis disponíveis para auto-complete
+  let showVariableDropdown = $state<boolean>(false);
+  let availableVars = $derived(Object.keys(relayState.activeVariables));
+
   // Inicializa uma única vez na montagem do modal
   onMount(() => {
     if (template) {
@@ -29,6 +33,10 @@
       uri = template.uri;
       headers = template.headers ? template.headers.map(h => ({ ...h })) : [];
       body = template.body || "";
+
+      // Aplica substituição de variáveis pré-existentes (ex: {{customerId}}, {{token}})
+      uri = relayState.replaceVariables(uri);
+      body = relayState.replaceVariables(body);
 
       if (template.requiresAuth && relayState.jwts.length > 0) {
         const authIdx = headers.findIndex(h => h.key.toLowerCase() === "authorization");
@@ -80,6 +88,26 @@
     }
   }
 
+  function insertVariable(varName: string): void {
+    const target = document.querySelector<HTMLTextAreaElement>('#replay-textarea');
+    if (!target) {
+      body += `{{${varName}}}`;
+      showVariableDropdown = false;
+      return;
+    }
+
+    const start = target.selectionStart;
+    const end = target.selectionEnd;
+    const varValue = relayState.activeVariables[varName] || `{{${varName}}}`;
+    body = body.substring(0, start) + `"${varValue}"` + body.substring(end);
+    showVariableDropdown = false;
+
+    setTimeout(() => {
+      target.focus();
+      target.selectionStart = target.selectionEnd = start + varValue.length + 2;
+    }, 0);
+  }
+
   function handleBodyKeyDown(e: KeyboardEvent): void {
     const target = e.target as HTMLTextAreaElement;
     const start = target.selectionStart;
@@ -97,6 +125,9 @@
 
     // Auto-fechamento de Chaves { -> {}
     if (e.key === "{") {
+      if (start > 0 && body[start - 1] === "{") {
+        showVariableDropdown = true;
+      }
       e.preventDefault();
       body = body.substring(0, start) + "{}" + body.substring(end);
       setTimeout(() => {
@@ -176,12 +207,16 @@
         activeHeaders.push({ key: "Content-Type", value: "application/json" });
       }
 
+      // Substitui variáveis ativas antes de enviar
+      const finalUri = relayState.replaceVariables(uri);
+      const finalBody = body.trim() ? relayState.replaceVariables(body) : null;
+
       const res = await invoke<HttpExchange>("execute_replay", {
         payload: {
           method,
-          uri,
+          uri: finalUri,
           headers: activeHeaders,
-          body: body.trim() ? body : null,
+          body: finalBody,
         }
       });
 
@@ -221,21 +256,51 @@
 
     <!-- Content Form -->
     <div class="flex-1 overflow-y-auto space-y-4 pr-1 text-xs">
-      <!-- Target Info & JWT Quick Action -->
+      <!-- Target Info & Quick Actions Bar -->
       <div class="flex items-center justify-between bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 font-mono">
         <div class="flex items-center space-x-2 text-[11px]">
           <span class="text-zinc-500">Destino:</span>
           <span class="text-indigo-400 font-semibold">{relayState.config.targetHost}:{relayState.config.targetPort}</span>
         </div>
 
-        <button
-          onclick={injectLatestJwt}
-          class="text-[11px] px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-all flex items-center space-x-1.5 cursor-pointer"
-          title="Injeta o token JWT mais recente no header Authorization"
-        >
-          <IconKey size={12} class="text-amber-400" />
-          <span>Auto-Injetar JWT</span>
-        </button>
+        <div class="flex items-center space-x-2">
+          <!-- Seletor de Variáveis Dinâmicas -->
+          {#if availableVars.length > 0}
+            <div class="relative">
+              <button
+                onclick={() => (showVariableDropdown = !showVariableDropdown)}
+                class="text-[11px] px-2 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-indigo-300 border border-indigo-500/30 transition-all flex items-center space-x-1 cursor-pointer"
+                title="Inserir variáveis capturadas automaticamente"
+              >
+                <IconSparkles size={11} class="text-indigo-400" />
+                <span>Inserir Variável ({availableVars.length})</span>
+              </button>
+
+              {#if showVariableDropdown}
+                <div class="absolute right-0 top-8 w-56 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl p-1 z-50 space-y-1 font-mono text-[11px] max-h-48 overflow-y-auto">
+                  {#each availableVars as vName}
+                    <button
+                      onclick={() => insertVariable(vName)}
+                      class="w-full text-left px-2 py-1.5 rounded hover:bg-zinc-800 flex items-center justify-between text-zinc-300 transition-colors cursor-pointer"
+                    >
+                      <span class="text-indigo-400 font-bold">{`{{${vName}}}`}</span>
+                      <span class="text-zinc-500 truncate max-w-[80px] text-[10px]">{relayState.activeVariables[vName]}</span>
+                    </button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/if}
+
+          <button
+            onclick={injectLatestJwt}
+            class="text-[11px] px-2.5 py-1 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 transition-all flex items-center space-x-1.5 cursor-pointer"
+            title="Injeta o token JWT mais recente no header Authorization"
+          >
+            <IconKey size={12} class="text-amber-400" />
+            <span>Auto-Injetar JWT</span>
+          </button>
+        </div>
       </div>
 
       {#if statusMessage}
@@ -321,6 +386,7 @@
         </div>
 
         <textarea
+          id="replay-textarea"
           bind:value={body}
           onkeydown={handleBodyKeyDown}
           rows="7"

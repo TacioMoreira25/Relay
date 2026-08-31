@@ -1,4 +1,4 @@
-# ⚡ Relay
+# Relay
 
 <div align="center">
 
@@ -8,25 +8,27 @@
 ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Linux_(Fedora_·_Ubuntu_·_Arch_·_openSUSE)-4E9A06?style=for-the-badge&logo=linux&logoColor=white)
 
-**Utilitário desktop nativo, ultraleve e de alta performance para desenvolvedores.**  
-Proxy Reverso Local, Interceptador de Tráfego HTTP, Inspecionador em Tempo Real e Replay de Requisições.
+**Utilitario desktop nativo, ultraleve e de alta performance para desenvolvedores.**  
+Proxy Reverso Local, Interceptador de Trafego HTTP, Inspecionador em Tempo Real e Replay de Requisicoes.
 
 </div>
 
 ---
 
-## 🎯 Por que o Relay?
+## Por que o Relay?
 
-Ferramentas tradicionais de depuração de rede baseadas em Electron costumam consumir mais de 500MB de RAM e adicionam latência perceptível ao desenvolvimento diário.
+O Relay foi projetado para substituir clientes pesados de API por um proxy leve e integrado ao seu fluxo diario de desenvolvimento.
 
-O **Relay** foi construído em **Rust (Tokio + Hyper)** e **Tauri v2 com Svelte 5**:
-* **Consumo Mínimo:** Footprint de apenas ~25MB a 35MB de memória RAM.
-* **Streaming Zero-Copy:** Repasse de tráfego quase instantâneo com fatias de bytes em memória.
-* **Interface Fluida:** Reatividade nativa sem Virtual DOM com Svelte 5 Runes.
+Construido com arquitetura nativa em **Rust (Tokio + Hyper)** e **Tauri v2 com Svelte 5**:
+* **Streaming Assincrono:** Repasse de trafego quase instantaneo com fatias de bytes em memoria.
+* **Auto-Descoberta de Portas:** Escaneamento nao-bloqueante de portas e servicos locais de desenvolvimento.
+* **Gerenciamento de Ambientes:** Alternancia rapida entre servicos locais, rotas de mock e endpoints de homologacao.
+* **Captura Inteligente de Sessao:** Deteccao automatica e decodificacao de tokens JWT no trafego.
+* **Interface Fluida:** Reatividade nativa sem Virtual DOM utilizando Svelte 5 Runes.
 
 ---
 
-## 🔄 Fluxo de Interceptação
+## Fluxo de Interceptacao
 
 ```mermaid
 sequenceDiagram
@@ -37,18 +39,18 @@ sequenceDiagram
     participant UI as Svelte 5 Frontend (Inspector)
     participant Upstream as API Alvo / Backend
 
-    Dev->>Proxy: Envia Requisição HTTP (ex: 127.0.0.1:8080)
-    Proxy->>Bus: Emite evento `relay:request` (Zero-copy)
+    Dev->>Proxy: Envia Requisicao HTTP (ex: 127.0.0.1:8080)
+    Proxy->>Bus: Emite evento relay:request (Zero-copy)
     Bus->>UI: Renderiza na Request List em tempo real
     
-    opt Injeção de Latência / Simulação de Erro
+    opt Injecao de Latencia / Simulacao de Erro
         Proxy->>Proxy: Aplica delay/falha configurada
     end
     
-    Proxy->>Upstream: Encaminha Requisição para o destino
+    Proxy->>Upstream: Encaminha Requisicao para o destino
     Upstream-->>Proxy: Retorna Resposta com Headers e Body
     
-    Proxy->>Bus: Emite evento `relay:response` (Status, Latência, Body)
+    Proxy->>Bus: Emite evento relay:response (Status, Latencia, Body)
     Bus->>UI: Atualiza Inspector de Detalhes
     
     Proxy-->>Dev: Entrega a Resposta original ao cliente
@@ -56,9 +58,9 @@ sequenceDiagram
 
 ---
 
-## 🚀 Guia de Início Rápido (Qualquer Linux)
+## Guia de Inicio Rapido (Linux)
 
-### 1. Instalar Pré-requisitos Básicos
+### 1. Pre-requisitos
 Certifique-se de possuir o compilador **Rust** e o **Node.js**:
 
 ```bash
@@ -67,12 +69,10 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source "$HOME/.cargo/env"
 ```
 
-### 2. Instalar Dependências do Sistema
-
-Selecione a sua distribuição Linux:
+### 2. Dependencias do Sistema
 
 <details>
-<summary><b>🔴 Fedora / RHEL / AlmaLinux</b> (Clique para expandir)</summary>
+<summary><b>Fedora / RHEL / AlmaLinux</b> (Clique para expandir)</summary>
 
 ```bash
 sudo dnf install -y \
@@ -82,7 +82,7 @@ sudo dnf install -y \
 </details>
 
 <details>
-<summary><b>🟠 Ubuntu / Debian / Pop!_OS / Mint</b> (Clique para expandir)</summary>
+<summary><b>Ubuntu / Debian / Mint</b> (Clique para expandir)</summary>
 
 ```bash
 sudo apt update && sudo apt install -y \
@@ -92,7 +92,7 @@ sudo apt update && sudo apt install -y \
 </details>
 
 <details>
-<summary><b>🔵 Arch Linux / Manjaro / EndeavourOS</b> (Clique para expandir)</summary>
+<summary><b>Arch Linux / Manjaro</b> (Clique para expandir)</summary>
 
 ```bash
 sudo pacman -Syu --needed \
@@ -100,24 +100,12 @@ sudo pacman -Syu --needed \
 ```
 </details>
 
-<details>
-<summary><b>🟢 openSUSE (Tumbleweed / Leap)</b> (Clique para expandir)</summary>
-
-```bash
-sudo zypper install -y \
-  gcc gcc-c++ gtk3-devel webkit2gtk4.1-devel \
-  libappindicator3-devel librsvg-devel openssl-devel
-```
-</details>
-
-> 📖 Para instruções detalhadas e outras distribuições, consulte o [Guia de Instalação Linux](docs/installation/linux.md).
-
 ---
 
 ### 3. Rodando o Projeto
 
 ```bash
-# 1. Instale as dependências do frontend
+# 1. Instale as dependencias do frontend
 npm install
 
 # 2. Inicie em modo de desenvolvimento (com Hot-Reload no Rust e Svelte)
@@ -126,52 +114,44 @@ npm run tauri dev
 
 ---
 
-## 📚 Documentação das Funcionalidades
+## Documentacao dos Modulos
 
-O Relay é estruturado em módulos independentes e bem documentados:
-
-| Módulo | Descrição | Documento |
-| :--- | :--- | :--- |
-| **Proxy Engine** | Motor TCP assíncrono Tokio + Hyper e injeção de latência/falhas | [Ver detalhes](docs/features/01-proxy-engine.md) |
-| **Live Inspector** | Visualização em tempo real de requisições, headers e payloads | [Ver detalhes](docs/features/02-traffic-inspector.md) |
-| **JWT & Session** | Detecção automática e decodificação de tokens JWT | [Ver detalhes](docs/features/03-jwt-session.md) |
-| **HTTP Replay** | Reenvio instantâneo e edição de chamadas gravadas | [Ver detalhes](docs/features/04-http-replay.md) |
-| **Decisões de Arquitetura** | Registro formal da escolha da stack tecnológica | [ADR 0001](docs/adr/0001-escolha-da-stack-tauri-rust.md) |
-| **Roadmap** | Cronograma de evolução e próximas entregas | [Roadmap](docs/roadmap.md) |
+| Modulo | Descricao |
+| :--- | :--- |
+| **Proxy Engine** | Motor TCP assincrono Tokio + Hyper, rotas de Mock e Chaos Simulator |
+| **Live Inspector** | Visualizacao em tempo real de requisicoes, headers, payloads e cURL generator |
+| **JWT & Session** | Deteccao automatica e decodificacao de claims JWT |
+| **HTTP Replay** | Reenvio instantaneo e encadeamento automatico de variaveis de resposta |
+| **Target Discovery** | Varredura assincrona de portas de desenvolvimento no Linux |
 
 ---
 
-## 📂 Estrutura do Repositório
+## Estrutura do Repositorio
 
 ```text
 relay/
-├── docs/                   # Documentação arquitetural e de features
-│   ├── adr/                # Architectural Decision Records
-│   ├── features/           # Documentação técnica por funcionalidade
-│   ├── installation/       # Guias de setup por sistema operacional
-│   ├── architecture.md     # Visão geral de camadas
-│   └── roadmap.md          # Fases de entrega
+├── docs/                   # Documentacao arquitetural e de features
 ├── src/                    # Frontend (Svelte 5 + TypeScript + Tailwind)
 │   ├── lib/
-│   │   ├── components/     # Componentes de UI modulares
+│   │   ├── components/     # Componentes modulares
 │   │   ├── stores/         # Estados reativos com Svelte 5 Runes ($state)
 │   │   └── types/          # Contratos TypeScript sincronizados com Rust
 │   ├── App.svelte          # Shell principal da interface desktop
-│   └── main.ts             # Ponto de entrada do app Svelte
+│   └── main.ts             # Entrada da aplicacao Svelte
 ├── src-tauri/              # Backend Nativo (Rust + Tokio + Hyper)
 │   ├── src/
-│   │   ├── proxy/          # Motor de proxy reverso e interceptação
-│   │   ├── state/          # Gerenciamento de memória e JWT store
-│   │   ├── commands/       # Tauri IPC commands invocáveis pela UI
-│   │   ├── lib.rs          # Inicialização e registro de handlers Tauri
+│   │   ├── proxy/          # Motor proxy, scanner de portas e interceptacao
+│   │   ├── state/          # Gerenciamento de memoria e session JWT
+│   │   ├── commands/       # Tauri IPC commands
+│   │   ├── lib.rs          # Handlers e setup do Tauri v2
 │   │   └── main.rs         # Entrypoint nativo
-│   ├── Cargo.toml          # Dependências Rust
-│   └── tauri.conf.json     # Configuração da janela e sandbox Tauri v2
+│   ├── Cargo.toml          # Dependencias Rust
+│   └── tauri.conf.json     # Configuracoes Tauri v2
 └── README.md
 ```
 
 ---
 
-## 📄 Licença
+## Licenca
 
-Distribuído sob a licença MIT.
+Distribuido sob a licenca MIT.
