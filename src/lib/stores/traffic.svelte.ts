@@ -1,20 +1,63 @@
-import type { HttpExchange, ExtractedJwt, ProxyConfig, RouteRule, SavedRequestTemplate, TargetEnvironment, DiscoveredTarget } from "$lib/types";
+import type { HttpExchange, ExtractedJwt, ProxyConfig, RouteRule, SavedRequestTemplate, TargetEnvironment, DiscoveredTarget, RelayProject } from "$lib/types";
 
-const SAVED_TARGETS_STORAGE_KEY = "relay_saved_environments_v1";
+const SAVED_PROJECTS_STORAGE_KEY = "relay_saved_projects_v1";
+const ACTIVE_PROJECT_ID_KEY = "relay_active_project_id_v1";
 
-function loadInitialSavedEnvironments(): TargetEnvironment[] {
+function createDefaultProject(): RelayProject {
+  return {
+    id: "proj-default",
+    name: "Projeto Padrão",
+    description: "Espaço de trabalho padrão do Relay",
+    config: {
+      listenPort: 8080,
+      targetHost: "127.0.0.1",
+      targetPort: 3000,
+      latencyMs: 0,
+      jitterMs: 0,
+      simulateFailureRate: 0.0,
+      failureStatusCode: 500,
+      autoExtractJwt: true,
+      routes: [],
+    },
+    savedTemplates: [],
+    savedEnvironments: [],
+    createdAt: Date.now(),
+  };
+}
+
+function loadProjectsFromStorage(): RelayProject[] {
   try {
-    const raw = localStorage.getItem(SAVED_TARGETS_STORAGE_KEY);
+    const raw = localStorage.getItem(SAVED_PROJECTS_STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
+      if (Array.isArray(parsed) && parsed.length > 0) {
         return parsed;
       }
     }
   } catch (e) {
     // Ignora
   }
-  return [];
+  return [createDefaultProject()];
+}
+
+function loadActiveProjectId(projects: RelayProject[]): string {
+  try {
+    const activeId = localStorage.getItem(ACTIVE_PROJECT_ID_KEY);
+    if (activeId && projects.some(p => p.id === activeId)) {
+      return activeId;
+    }
+  } catch (e) {
+    // Ignora
+  }
+  return projects[0].id;
+}
+
+function saveProjectsToStorage(projects: RelayProject[]): void {
+  try {
+    localStorage.setItem(SAVED_PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+  } catch (e) {
+    console.warn("Falha ao persistir projetos no storage:", e);
+  }
 }
 
 class RelayState {
@@ -24,21 +67,29 @@ class RelayState {
   // Comparação Diff entre 2 requisições
   diffCompareExchange = $state<HttpExchange | null>(null);
 
-  // Coleção de Requisições Salvas / Templates
+  // Sistema de Multi-Projetos
+  projects = $state<RelayProject[]>(loadProjectsFromStorage());
+  activeProjectId = $state<string>(loadActiveProjectId(this.projects));
+
+  activeProject = $derived.by(() => {
+    return this.projects.find(p => p.id === this.activeProjectId) || this.projects[0];
+  });
+
+  // Coleção de Requisições Salvas / Templates (vinculado ao projeto ativo)
   savedTemplates = $state<SavedRequestTemplate[]>([]);
   selectedTemplate = $state<SavedRequestTemplate | null>(null);
 
-  // Navegação Lateral: "history" (Tráfego Real) vs "collection" (Rotas Salvas)
-  sidebarTab = $state<"history" | "collection">("history");
+  // Navegação Lateral: "collection" (Padrão) vs "history" (Tráfego Real)
+  sidebarTab = $state<"history" | "collection">("collection");
 
-  // Ambientes Salvos Persistidos (Inicia vazio)
-  savedEnvironments = $state<TargetEnvironment[]>(loadInitialSavedEnvironments());
+  // Ambientes Salvos (vinculado ao projeto ativo)
+  savedEnvironments = $state<TargetEnvironment[]>([]);
   
   // Alvos Descobertos por Varredura Local de Portas
   discoveredTargets = $state<DiscoveredTarget[]>([]);
   isScanningTargets = $state<boolean>(false);
 
-  // Ambiente Atualmente Ativo (null se nenhum conectado)
+  // Ambiente Atualmente Ativo
   activeTarget = $state<TargetEnvironment | null>(null);
 
   // Variáveis capturadas dinamicamente das respostas (ex: id de customer, token, etc.)
@@ -54,6 +105,7 @@ class RelayState {
   methodFilter = $state<string>("ALL");
   statusFilter = $state<string>("ALL");
 
+  // Configuração do Proxy
   config = $state<ProxyConfig>({
     listenPort: 8080,
     targetHost: "127.0.0.1",
@@ -65,6 +117,90 @@ class RelayState {
     autoExtractJwt: true,
     routes: [],
   });
+
+  constructor() {
+    this.syncCurrentProjectState();
+  }
+
+  syncCurrentProjectState(): void {
+    const current = this.activeProject;
+    if (current) {
+      this.config = { ...current.config, routes: current.config.routes ? [...current.config.routes] : [] };
+      this.savedTemplates = current.savedTemplates ? [...current.savedTemplates] : [];
+      this.savedEnvironments = current.savedEnvironments ? [...current.savedEnvironments] : [];
+      this.activeTarget = null;
+    }
+  }
+
+  saveCurrentProject(): void {
+    const idx = this.projects.findIndex(p => p.id === this.activeProjectId);
+    if (idx >= 0) {
+      this.projects[idx] = {
+        ...this.projects[idx],
+        config: { ...this.config },
+        savedTemplates: [...this.savedTemplates],
+        savedEnvironments: [...this.savedEnvironments],
+      };
+      saveProjectsToStorage(this.projects);
+    }
+  }
+
+  // Ações de Projetos
+  switchProject(projectId: string): void {
+    if (projectId === this.activeProjectId) return;
+    this.saveCurrentProject();
+    this.activeProjectId = projectId;
+    localStorage.setItem(ACTIVE_PROJECT_ID_KEY, projectId);
+    this.syncCurrentProjectState();
+    this.clear();
+  }
+
+  createProject(name: string, description?: string): void {
+    this.saveCurrentProject();
+    const newProj: RelayProject = {
+      id: `proj-${Date.now()}`,
+      name: name.trim() || "Novo Projeto",
+      description: description?.trim(),
+      config: {
+        listenPort: 8080,
+        targetHost: "127.0.0.1",
+        targetPort: 3000,
+        latencyMs: 0,
+        jitterMs: 0,
+        simulateFailureRate: 0.0,
+        failureStatusCode: 500,
+        autoExtractJwt: true,
+        routes: [],
+      },
+      savedTemplates: [],
+      savedEnvironments: [],
+      createdAt: Date.now(),
+    };
+    this.projects = [...this.projects, newProj];
+    this.activeProjectId = newProj.id;
+    saveProjectsToStorage(this.projects);
+    localStorage.setItem(ACTIVE_PROJECT_ID_KEY, newProj.id);
+    this.syncCurrentProjectState();
+    this.clear();
+  }
+
+  updateProject(id: string, name: string, description?: string): void {
+    this.projects = this.projects.map(p => p.id === id ? { ...p, name: name.trim(), description: description?.trim() } : p);
+    saveProjectsToStorage(this.projects);
+  }
+
+  deleteProject(id: string): void {
+    if (this.projects.length <= 1) return;
+    const remaining = this.projects.filter(p => p.id !== id);
+    this.projects = remaining;
+    if (this.activeProjectId === id) {
+      this.activeProjectId = remaining[0].id;
+      localStorage.setItem(ACTIVE_PROJECT_ID_KEY, remaining[0].id);
+      this.syncCurrentProjectState();
+      this.clear();
+    }
+    saveProjectsToStorage(this.projects);
+  }
 
   // Derived - Variáveis Ativas
   activeVariables = $derived.by((): Record<string, string> => {
@@ -161,7 +297,6 @@ class RelayState {
             const keyName = prefix ? `${prefix}_${k}` : k;
             newVars[keyName] = String(v);
 
-            // Mapeamentos diretos convenientes
             if (k === "id" && !prefix) {
               newVars["lastId"] = String(v);
               newVars["customerId"] = String(v);
@@ -182,27 +317,19 @@ class RelayState {
       scanObj(parsed);
       this.extractedVariables = newVars;
     } catch {
-      // Body não é JSON válido, ignora
+      // Body não é JSON válido
     }
   }
 
-  // Persiste ambientes salvos no localStorage
-  saveEnvironmentsToStorage(): void {
-    try {
-      localStorage.setItem(SAVED_TARGETS_STORAGE_KEY, JSON.stringify(this.savedEnvironments));
-    } catch (e) {
-      console.warn("Falha ao salvar ambientes no localStorage:", e);
-    }
-  }
-
+  // Persistência de Ambientes
   addSavedEnvironment(env: TargetEnvironment): void {
     this.savedEnvironments = [...this.savedEnvironments, env];
-    this.saveEnvironmentsToStorage();
+    this.saveCurrentProject();
   }
 
   updateSavedEnvironment(updated: TargetEnvironment): void {
     this.savedEnvironments = this.savedEnvironments.map(e => e.id === updated.id ? updated : e);
-    this.saveEnvironmentsToStorage();
+    this.saveCurrentProject();
     if (this.activeTarget?.id === updated.id) {
       this.selectTarget(updated);
     }
@@ -210,9 +337,9 @@ class RelayState {
 
   removeSavedEnvironment(id: string): void {
     this.savedEnvironments = this.savedEnvironments.filter(e => e.id !== id);
-    this.saveEnvironmentsToStorage();
+    this.saveCurrentProject();
     if (this.activeTarget?.id === id) {
-      this.activeTarget = null;
+      this.selectTarget(null);
     }
   }
 
@@ -221,7 +348,31 @@ class RelayState {
     if (target) {
       this.config.targetHost = target.host;
       this.config.targetPort = target.port;
+      this.saveCurrentProject();
     }
+  }
+
+  // Persistência de Configuração do Proxy
+  updateConfig(newConfig: ProxyConfig): void {
+    this.config = newConfig;
+    this.saveCurrentProject();
+  }
+
+  // Persistência de Templates / Coleções
+  setTemplates(templates: SavedRequestTemplate[]): void {
+    this.savedTemplates = templates;
+    this.saveCurrentProject();
+  }
+
+  addTemplate(template: SavedRequestTemplate): void {
+    this.savedTemplates = [...this.savedTemplates, template];
+    this.saveCurrentProject();
+  }
+
+  clearTemplates(): void {
+    this.savedTemplates = [];
+    this.selectedTemplate = null;
+    this.saveCurrentProject();
   }
 
   // Actions - Requisições
@@ -258,20 +409,6 @@ class RelayState {
     this.diffCompareExchange = null;
   }
 
-  // Actions - Templates / Coleções
-  setTemplates(templates: SavedRequestTemplate[]): void {
-    this.savedTemplates = templates;
-  }
-
-  addTemplate(template: SavedRequestTemplate): void {
-    this.savedTemplates = [...this.savedTemplates, template];
-  }
-
-  clearTemplates(): void {
-    this.savedTemplates = [];
-    this.selectedTemplate = null;
-  }
-
   // Actions - JWTs
   addJwt(jwt: ExtractedJwt): void {
     const existingIndex = this.jwts.findIndex(j => j.token === jwt.token);
@@ -299,10 +436,12 @@ class RelayState {
   // Actions - Rotas
   addRoute(route: RouteRule): void {
     this.config.routes.push(route);
+    this.saveCurrentProject();
   }
 
   removeRoute(index: number): void {
     this.config.routes.splice(index, 1);
+    this.saveCurrentProject();
   }
 }
 

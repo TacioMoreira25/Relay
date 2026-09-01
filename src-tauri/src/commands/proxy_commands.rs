@@ -1,5 +1,5 @@
 use bytes::Bytes;
-use http_body_util::{BodyExt, Full};
+use hyper::header::{HeaderName, HeaderValue};
 use hyper::Request;
 use hyper_util::rt::TokioIo;
 use parking_lot::Mutex;
@@ -7,15 +7,17 @@ use std::sync::Arc;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, State};
 use tokio::net::TcpStream;
-use tokio::time::{timeout, Duration};
 use uuid::Uuid;
 
-use crate::proxy::{
-    export_to_har, export_to_openapi, generate_root_ca, resolve_route_target_full,
-    scan_local_targets, DiscoveredTarget, GeneratedCa, HeaderEntry, HttpExchange,
-    InterceptedRequest, InterceptedResponse, ProxyConfig, ProxyServer,
+use crate::proxy::ca::generate_root_ca;
+use crate::proxy::engine::ProxyServer;
+use crate::proxy::export::{export_to_har, export_to_openapi};
+use crate::proxy::recorder::{
+    HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig,
 };
-use crate::state::{extract_jwts_from_body, extract_jwts_from_headers, ExtractedJwt, SessionState};
+use crate::proxy::scanner::{scan_local_targets, DiscoveredTarget};
+use crate::proxy::GeneratedCa;
+use crate::state::{ExtractedJwt, SessionState};
 
 pub struct AppState {
     pub proxy_server: Mutex<Option<ProxyServer>>,
@@ -28,28 +30,37 @@ pub struct AppState {
 pub async fn start_proxy(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
-    config: ProxyConfig,
+    config: Option<ProxyConfig>,
 ) -> Result<(), String> {
-    *state.config.lock() = config.clone();
+    let mut server = {
+        let server_lock = state.proxy_server.lock();
+        if server_lock.is_some() {
+            return Err("O servidor proxy já está em execução.".to_string());
+        }
 
-    let mut server = ProxyServer::new(config);
+        if let Some(cfg) = config {
+            *state.config.lock() = cfg;
+        }
+
+        let current_config = state.config.lock().clone();
+        ProxyServer::new(current_config)
+    };
+
     server.start(app).await?;
+    *state.proxy_server.lock() = Some(server);
 
-    let mut current_server = state.proxy_server.lock();
-    if let Some(mut old) = current_server.take() {
-        old.stop();
-    }
-    *current_server = Some(server);
     Ok(())
 }
 
 #[tauri::command]
 pub async fn stop_proxy(state: State<'_, Arc<AppState>>) -> Result<(), String> {
-    let mut current_server = state.proxy_server.lock();
-    if let Some(mut server) = current_server.take() {
+    let mut server_lock = state.proxy_server.lock();
+    if let Some(mut server) = server_lock.take() {
         server.stop();
+        Ok(())
+    } else {
+        Err("O servidor proxy não está rodando.".to_string())
     }
-    Ok(())
 }
 
 #[tauri::command]
@@ -111,11 +122,14 @@ pub async fn clear_exchanges(state: State<'_, Arc<AppState>>) -> Result<(), Stri
 #[serde(rename_all = "camelCase")]
 pub struct SavedTemplateInput {
     pub id: Option<String>,
-    pub name: String,
+    pub name: Option<String>,
     pub description: Option<String>,
     pub tag: Option<String>,
-    pub method: String,
-    pub uri: String,
+    pub method: Option<String>,
+    pub uri: Option<String>,
+    pub url: Option<String>,
+    pub path: Option<String>,
+    pub endpoint: Option<String>,
     #[serde(default)]
     pub headers: Vec<HeaderEntry>,
     #[serde(default)]
@@ -138,7 +152,7 @@ pub struct SavedTemplateOutput {
     pub requires_auth: bool,
 }
 
-/// Importa uma coleção de endpoints estruturados (JSON de Templates)
+/// Parser inteligente e universal de coleções (OpenAPI 3.0 / Swagger, Postman Collection v2.1 ou Array Relay)
 #[tauri::command]
 pub async fn parse_collection_json(
     json_content: String,
@@ -148,47 +162,213 @@ pub async fn parse_collection_json(
 
     let mut result = Vec::new();
 
-    if let Some(arr) = parsed.as_array() {
+    // 1. Suporte Nativo a OpenAPI 3.0 / Swagger (openapi: "3.0.x" ou swagger: "2.0")
+    if let Some(paths) = parsed.get("paths").and_then(|p| p.as_object()) {
+        let mut idx = 1;
+        for (path_key, path_item) in paths {
+            if let Some(methods_map) = path_item.as_object() {
+                for (method_key, op_val) in methods_map {
+                    let method_upper = method_key.to_uppercase();
+                    if !["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"]
+                        .contains(&method_upper.as_str())
+                    {
+                        continue;
+                    }
+
+                    let summary = op_val
+                        .get("summary")
+                        .and_then(|s| s.as_str())
+                        .or_else(|| op_val.get("operationId").and_then(|o| o.as_str()))
+                        .unwrap_or(path_key.as_str())
+                        .to_string();
+
+                    let description = op_val
+                        .get("description")
+                        .and_then(|d| d.as_str())
+                        .map(|s| s.to_string());
+
+                    let tag = op_val
+                        .get("tags")
+                        .and_then(|t| t.as_array())
+                        .and_then(|arr| arr.first())
+                        .and_then(|first_tag| first_tag.as_str())
+                        .map(|s| s.to_string());
+
+                    let headers = vec![HeaderEntry {
+                        key: "Content-Type".to_string(),
+                        value: "application/json".to_string(),
+                    }];
+
+                    let mut body = None;
+                    if let Some(req_body) = op_val.get("requestBody") {
+                        if let Some(content) = req_body.get("content") {
+                            if let Some(json_content) = content.get("application/json") {
+                                if let Some(schema) = json_content.get("schema") {
+                                    if let Some(example) = json_content
+                                        .get("example")
+                                        .or_else(|| schema.get("example"))
+                                    {
+                                        body = Some(serde_json::to_string_pretty(example).unwrap_or_default());
+                                    } else {
+                                        body = Some("{\n  \"example\": \"data\"\n}".to_string());
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let requires_auth = op_val.get("security").is_some() || parsed.get("security").is_some();
+
+                    result.push(SavedTemplateOutput {
+                        id: format!("openapi-{}", idx),
+                        name: summary,
+                        description,
+                        tag,
+                        method: method_upper,
+                        uri: path_key.clone(),
+                        headers,
+                        body,
+                        requires_auth,
+                    });
+                    idx += 1;
+                }
+            }
+        }
+
+        if !result.is_empty() {
+            return Ok(result);
+        }
+    }
+
+    // 2. Suporte a Coleções Postman (item: [...])
+    if let Some(items) = parsed.get("item").and_then(|i| i.as_array()) {
+        fn parse_postman_items(
+            items: &[serde_json::Value],
+            current_tag: Option<String>,
+            out: &mut Vec<SavedTemplateOutput>,
+            counter: &mut usize,
+        ) {
+            for it in items {
+                if let Some(sub_items) = it.get("item").and_then(|sub| sub.as_array()) {
+                    let folder_name = it.get("name").and_then(|n| n.as_str()).map(|s| s.to_string());
+                    parse_postman_items(sub_items, folder_name, out, counter);
+                } else if let Some(req) = it.get("request") {
+                    *counter += 1;
+                    let name = it
+                        .get("name")
+                        .and_then(|n| n.as_str())
+                        .unwrap_or("Requisição Postman")
+                        .to_string();
+
+                    let method = req
+                        .get("method")
+                        .and_then(|m| m.as_str())
+                        .unwrap_or("GET")
+                        .to_uppercase();
+
+                    let mut uri = "/".to_string();
+                    if let Some(url_obj) = req.get("url") {
+                        if let Some(raw) = url_obj.get("raw").and_then(|r| r.as_str()) {
+                            if raw.starts_with('/') {
+                                uri = raw.to_string();
+                            } else if let Some(pos) = raw.find("://") {
+                                if let Some(slash_pos) = raw[pos + 3..].find('/') {
+                                    uri = raw[pos + 3 + slash_pos..].to_string();
+                                }
+                            } else if let Some(slash_pos) = raw.find('/') {
+                                uri = raw[slash_pos..].to_string();
+                            }
+                        }
+                    }
+
+                    let mut headers = Vec::new();
+                    if let Some(h_arr) = req.get("header").and_then(|h| h.as_array()) {
+                        for h in h_arr {
+                            if let (Some(k), Some(v)) = (
+                                h.get("key").and_then(|k| k.as_str()),
+                                h.get("value").and_then(|v| v.as_str()),
+                            ) {
+                                headers.push(HeaderEntry {
+                                    key: k.to_string(),
+                                    value: v.to_string(),
+                                });
+                            }
+                        }
+                    }
+
+                    let body = req
+                        .get("body")
+                        .and_then(|b| b.get("raw"))
+                        .and_then(|r| r.as_str())
+                        .map(|s| s.to_string());
+
+                    let requires_auth = req.get("auth").is_some();
+
+                    out.push(SavedTemplateOutput {
+                        id: format!("postman-{}", counter),
+                        name,
+                        description: it.get("description").and_then(|d| d.as_str()).map(|s| s.to_string()),
+                        tag: current_tag.clone(),
+                        method,
+                        uri,
+                        headers,
+                        body,
+                        requires_auth,
+                    });
+                }
+            }
+        }
+
+        let mut counter = 0;
+        parse_postman_items(items, None, &mut result, &mut counter);
+        if !result.is_empty() {
+            return Ok(result);
+        }
+    }
+
+    // 3. Array Padrão Relay / JSON Universal
+    let raw_array = if let Some(arr) = parsed.as_array() {
+        Some(arr)
+    } else if let Some(arr) = parsed.get("requests").and_then(|r| r.as_array()) {
+        Some(arr)
+    } else if let Some(arr) = parsed.get("endpoints").and_then(|r| r.as_array()) {
+        Some(arr)
+    } else {
+        None
+    };
+
+    if let Some(arr) = raw_array {
         for (i, item) in arr.iter().enumerate() {
             if let Ok(tpl) = serde_json::from_value::<SavedTemplateInput>(item.clone()) {
                 let id = tpl.id.unwrap_or_else(|| format!("tpl-{}", i + 1));
+                let uri = tpl
+                    .uri
+                    .or(tpl.url)
+                    .or(tpl.path)
+                    .or(tpl.endpoint)
+                    .unwrap_or_else(|| "/".to_string());
+                let method = tpl.method.unwrap_or_else(|| "GET".to_string()).to_uppercase();
+                let name = tpl.name.unwrap_or_else(|| format!("{} {}", method, uri));
+
                 result.push(SavedTemplateOutput {
                     id,
-                    name: tpl.name,
+                    name,
                     description: tpl.description,
                     tag: tpl.tag,
-                    method: tpl.method.to_uppercase(),
-                    uri: tpl.uri,
+                    method,
+                    uri,
                     headers: tpl.headers,
                     body: tpl.body,
                     requires_auth: tpl.requires_auth,
                 });
             }
         }
-        return Ok(result);
-    }
-
-    if let Some(arr) = parsed.get("requests").and_then(|r| r.as_array()) {
-        for (i, item) in arr.iter().enumerate() {
-            if let Ok(tpl) = serde_json::from_value::<SavedTemplateInput>(item.clone()) {
-                let id = tpl.id.unwrap_or_else(|| format!("tpl-{}", i + 1));
-                result.push(SavedTemplateOutput {
-                    id,
-                    name: tpl.name,
-                    description: tpl.description,
-                    tag: tpl.tag,
-                    method: tpl.method.to_uppercase(),
-                    uri: tpl.uri,
-                    headers: tpl.headers,
-                    body: tpl.body,
-                    requires_auth: tpl.requires_auth,
-                });
-            }
+        if !result.is_empty() {
+            return Ok(result);
         }
-        return Ok(result);
     }
 
-    Err("Formato de coleção desconhecido. Envie um JSON array com os endpoints.".to_string())
+    Err("Formato de coleção não reconhecido. Formatos suportados: OpenAPI 3.0 / Swagger JSON, Postman Collection v2.1 ou JSON Array Relay.".to_string())
 }
 
 #[derive(serde::Deserialize)]
@@ -243,225 +423,192 @@ pub async fn execute_replay(
 
     let _ = app.emit("relay:request", &exchange);
 
-    // Resolve o host e porta de destino conforme as regras de rotas
-    let route_res = resolve_route_target_full(&payload.uri, &config);
-
-    if route_res.is_mock {
-        let duration_ms = start_time.elapsed().as_millis() as u64;
-        let mock_body_str = route_res
-            .mock_body
-            .unwrap_or_else(|| r#"{"mock": true, "message": "Relay Mock Engine"}"#.to_string());
-        let mock_bytes = Bytes::from(mock_body_str.clone());
-
-        let intercepted_res = InterceptedResponse {
-            id: Uuid::new_v4().to_string(),
-            request_id: req_id.clone(),
-            timestamp: chrono::Utc::now().timestamp_millis(),
-            status_code: route_res.mock_status,
-            headers: vec![
-                HeaderEntry {
-                    key: "content-type".to_string(),
-                    value: "application/json".to_string(),
-                },
-                HeaderEntry {
-                    key: "x-relay-mock".to_string(),
-                    value: "true".to_string(),
-                },
-            ],
-            body: Some(mock_body_str),
-            size_bytes: mock_bytes.len(),
-            duration_ms,
-        };
-
-        exchange.response = Some(intercepted_res.clone());
-        exchange.status = "completed".to_string();
-
-        state.exchanges.lock().push(exchange.clone());
-        let _ = app.emit("relay:response", &intercepted_res);
-        return Ok(exchange);
-    }
-
-    let target_addr = format!("{}:{}", route_res.host, route_res.port);
-
-    // Conexão com timeout de 5 segundos
-    let connect_res = timeout(Duration::from_secs(5), TcpStream::connect(&target_addr)).await;
-    let stream = match connect_res {
-        Ok(Ok(s)) => s,
-        Ok(Err(e)) => {
-            let err_msg = format!("Falha ao conectar com o upstream ({}): {}", target_addr, e);
-            exchange.status = "failed".to_string();
-            exchange.error = Some(err_msg.clone());
-            state.exchanges.lock().push(exchange.clone());
-            let _ = app.emit(
-                "relay:error",
-                serde_json::json!({ "requestId": req_id, "error": err_msg }),
-            );
-            return Ok(exchange);
-        }
-        Err(_) => {
-            let err_msg = format!("Timeout de conexão com o upstream ({})", target_addr);
-            exchange.status = "failed".to_string();
-            exchange.error = Some(err_msg.clone());
-            state.exchanges.lock().push(exchange.clone());
-            let _ = app.emit(
-                "relay:error",
-                serde_json::json!({ "requestId": req_id, "error": err_msg }),
-            );
-            return Ok(exchange);
-        }
-    };
-
-    let io = TokioIo::new(stream);
-    let (mut sender, conn) = hyper::client::conn::http1::handshake(io)
-        .await
-        .map_err(|e| format!("Erro no handshake com upstream: {}", e))?;
-
-    tokio::spawn(async move {
-        let _ = conn.await;
-    });
-
-    let uri_path = if payload.uri.starts_with('/') {
-        payload.uri.clone()
-    } else {
-        format!("/{}", payload.uri)
-    };
-
-    let mut builder = Request::builder().method(&method).uri(&uri_path);
-
-    for h in &payload.headers {
-        if !h.key.eq_ignore_ascii_case("host")
-            && !h.key.eq_ignore_ascii_case("connection")
-            && !h.key.eq_ignore_ascii_case("transfer-encoding")
-        {
-            if let Ok(name) = hyper::header::HeaderName::from_bytes(h.key.as_bytes()) {
-                if let Ok(val) = hyper::header::HeaderValue::from_str(&h.value) {
-                    builder = builder.header(name, val);
-                }
-            }
-        }
-    }
-    builder = builder.header("host", &target_addr);
-
-    let req = builder
-        .body(Full::new(body_bytes))
-        .map_err(|e| format!("Falha ao construir requisição: {}", e))?;
-
-    let forward_res = timeout(Duration::from_secs(10), sender.send_request(req)).await;
-    let duration_ms = start_time.elapsed().as_millis() as u64;
-
-    match forward_res {
-        Ok(Ok(res)) => {
-            let status_code = res.status().as_u16();
-            let mut res_headers = Vec::new();
-            for (k, v) in res.headers().iter() {
-                res_headers.push(HeaderEntry {
-                    key: k.as_str().to_string(),
-                    value: v.to_str().unwrap_or_default().to_string(),
-                });
-            }
-
-            let res_bytes = match res.into_body().collect().await {
-                Ok(c) => c.to_bytes(),
-                Err(_) => Bytes::new(),
-            };
-
-            let res_body_str = String::from_utf8(res_bytes.to_vec()).ok();
+    // Verifica se a rota é um Mock configurado
+    for route in &config.routes {
+        if route.is_mock && payload.uri.starts_with(&route.path_prefix) {
+            let status_code = route.mock_status_code.unwrap_or(200);
+            let mock_body = route
+                .mock_body
+                .clone()
+                .unwrap_or_else(|| "{\"mock\": true}".to_string());
+            let duration_ms = start_time.elapsed().as_millis() as u64;
 
             let intercepted_res = InterceptedResponse {
-                id: Uuid::new_v4().to_string(),
+                id: format!("res-{}", Uuid::new_v4()),
                 request_id: req_id.clone(),
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 status_code,
-                headers: res_headers.clone(),
-                body: res_body_str.clone(),
-                size_bytes: res_bytes.len(),
+                headers: vec![
+                    HeaderEntry {
+                        key: "content-type".to_string(),
+                        value: "application/json".to_string(),
+                    },
+                    HeaderEntry {
+                        key: "x-relay-mock".to_string(),
+                        value: "true".to_string(),
+                    },
+                ],
+                body: Some(mock_body),
+                size_bytes: route.mock_body.as_ref().map(|b| b.len()).unwrap_or(0),
                 duration_ms,
             };
-
-            // Auto-captura JWT em respostas do replay
-            if config.auto_extract_jwt {
-                let res_header_tuples: Vec<(String, String)> = res_headers
-                    .iter()
-                    .map(|h| (h.key.clone(), h.value.clone()))
-                    .collect();
-
-                let mut res_jwts = extract_jwts_from_headers(&res_header_tuples, "replay_response");
-                if let Some(ref body_text) = res_body_str {
-                    let body_jwts = extract_jwts_from_body(body_text, "replay_response_body");
-                    res_jwts.extend(body_jwts);
-                }
-
-                for jwt in res_jwts {
-                    state.session.insert_jwt(jwt.clone());
-                    let _ = app.emit("relay:jwt", &jwt);
-                }
-            }
 
             exchange.response = Some(intercepted_res.clone());
             exchange.status = "completed".to_string();
 
             state.exchanges.lock().push(exchange.clone());
             let _ = app.emit("relay:response", &intercepted_res);
-
-            Ok(exchange)
-        }
-        Ok(Err(err)) => {
-            let err_msg = err.to_string();
-            exchange.status = "failed".to_string();
-            exchange.error = Some(err_msg.clone());
-
-            state.exchanges.lock().push(exchange.clone());
-            let _ = app.emit(
-                "relay:error",
-                serde_json::json!({
-                    "requestId": req_id,
-                    "error": err_msg,
-                }),
-            );
-
-            Ok(exchange)
-        }
-        Err(_) => {
-            let err_msg = "Timeout aguardando resposta do upstream (10s)".to_string();
-            exchange.status = "failed".to_string();
-            exchange.error = Some(err_msg.clone());
-
-            state.exchanges.lock().push(exchange.clone());
-            let _ = app.emit(
-                "relay:error",
-                serde_json::json!({
-                    "requestId": req_id,
-                    "error": err_msg,
-                }),
-            );
-
-            Ok(exchange)
+            return Ok(exchange);
         }
     }
+
+    // Identifica target da rota ou default
+    let mut target_host = config.target_host.clone();
+    let mut target_port = config.target_port;
+
+    for route in &config.routes {
+        if payload.uri.starts_with(&route.path_prefix) {
+            target_port = route.target_port;
+            if let Some(ref h) = route.target_host {
+                target_host = h.clone();
+            }
+            break;
+        }
+    }
+
+    let upstream_addr = format!("{}:{}", target_host, target_port);
+    let tcp_stream = match tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        TcpStream::connect(&upstream_addr),
+    )
+    .await
+    {
+        Ok(Ok(stream)) => stream,
+        Ok(Err(e)) => {
+            let err_msg = format!("Falha de conexão com {}: {}", upstream_addr, e);
+            exchange.status = "failed".to_string();
+            exchange.error = Some(err_msg.clone());
+            state.exchanges.lock().push(exchange.clone());
+            let _ = app.emit(
+                "relay:error",
+                serde_json::json!({ "requestId": req_id, "error": err_msg }),
+            );
+            return Ok(exchange);
+        }
+        Err(_) => {
+            let err_msg = format!("Timeout de conexão ao contactar {}", upstream_addr);
+            exchange.status = "failed".to_string();
+            exchange.error = Some(err_msg.clone());
+            state.exchanges.lock().push(exchange.clone());
+            let _ = app.emit(
+                "relay:error",
+                serde_json::json!({ "requestId": req_id, "error": err_msg }),
+            );
+            return Ok(exchange);
+        }
+    };
+
+    let io = TokioIo::new(tcp_stream);
+    let (mut sender, conn) = hyper::client::conn::http1::handshake(io)
+        .await
+        .map_err(|e| format!("Falha no handshake HTTP: {}", e))?;
+
+    tokio::spawn(async move {
+        if let Err(err) = conn.await {
+            tracing::warn!("Conexão upstream encerrada: {:?}", err);
+        }
+    });
+
+    let mut req_builder = Request::builder()
+        .method(method)
+        .uri(payload.uri.as_str());
+
+    for h in &payload.headers {
+        if let (Ok(hn), Ok(hv)) = (
+            HeaderName::from_bytes(h.key.as_bytes()),
+            HeaderValue::from_str(&h.value),
+        ) {
+            req_builder = req_builder.header(hn, hv);
+        }
+    }
+
+    let req_body = http_body_util::Full::new(body_bytes);
+    let req = req_builder
+        .body(req_body)
+        .map_err(|e| format!("Falha ao construir requisição: {}", e))?;
+
+    let resp = match sender.send_request(req).await {
+        Ok(r) => r,
+        Err(e) => {
+            let err_msg = format!("Erro ao enviar requisição para upstream: {}", e);
+            exchange.status = "failed".to_string();
+            exchange.error = Some(err_msg.clone());
+            state.exchanges.lock().push(exchange.clone());
+            let _ = app.emit(
+                "relay:error",
+                serde_json::json!({ "requestId": req_id, "error": err_msg }),
+            );
+            return Ok(exchange);
+        }
+    };
+
+    let status_code = resp.status().as_u16();
+    let res_headers: Vec<HeaderEntry> = resp
+        .headers()
+        .iter()
+        .map(|(k, v)| HeaderEntry {
+            key: k.to_string(),
+            value: v.to_str().unwrap_or("").to_string(),
+        })
+        .collect();
+
+    use http_body_util::BodyExt;
+    let resp_bytes = resp
+        .into_body()
+        .collect()
+        .await
+        .map_err(|e| format!("Erro ao ler corpo da resposta: {}", e))?
+        .to_bytes();
+
+    let duration_ms = start_time.elapsed().as_millis() as u64;
+    let body_str = String::from_utf8(resp_bytes.to_vec()).ok();
+
+    let intercepted_res = InterceptedResponse {
+        id: format!("res-{}", Uuid::new_v4()),
+        request_id: req_id.clone(),
+        timestamp: chrono::Utc::now().timestamp_millis(),
+        status_code,
+        headers: res_headers,
+        body: body_str,
+        size_bytes: resp_bytes.len(),
+        duration_ms,
+    };
+
+    exchange.response = Some(intercepted_res.clone());
+    exchange.status = "completed".to_string();
+
+    state.exchanges.lock().push(exchange.clone());
+    let _ = app.emit("relay:response", &intercepted_res);
+
+    Ok(exchange)
 }
 
-/// Gera um novo certificado raiz CA para inspeção HTTPS / MITM
 #[tauri::command]
-pub async fn create_ca_certificate(common_name: Option<String>) -> Result<GeneratedCa, String> {
-    let name = common_name.unwrap_or_else(|| "Relay Root CA Local".to_string());
-    generate_root_ca(&name)
+pub async fn create_ca_certificate() -> Result<GeneratedCa, String> {
+    generate_root_ca("Relay Local Root CA")
 }
 
-/// Exporta a sessão atual de tráfego para formato HAR 1.2
 #[tauri::command]
-pub async fn export_har(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
-    let list = state.exchanges.lock();
-    Ok(export_to_har(&list))
+pub async fn export_har(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    let exchanges = state.exchanges.lock().clone();
+    let json_val = export_to_har(&exchanges);
+    serde_json::to_string_pretty(&json_val).map_err(|e| e.to_string())
 }
 
-/// Exporta os endpoints interceptados para especificação OpenAPI 3.0
 #[tauri::command]
-pub async fn export_openapi(state: State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
-    let list = state.exchanges.lock();
-    let config = state.config.lock();
-    Ok(export_to_openapi(
-        &list,
-        &config.target_host,
-        config.target_port,
-    ))
+pub async fn export_openapi(state: State<'_, Arc<AppState>>) -> Result<String, String> {
+    let exchanges = state.exchanges.lock().clone();
+    let config = state.config.lock().clone();
+    let json_val = export_to_openapi(&exchanges, &config.target_host, config.target_port);
+    serde_json::to_string_pretty(&json_val).map_err(|e| e.to_string())
 }

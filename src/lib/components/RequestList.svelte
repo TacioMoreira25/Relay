@@ -1,11 +1,18 @@
 <script lang="ts">
   import { relayState } from "$lib/stores/traffic.svelte";
-  import { IconSearch, IconTrash, IconFileJson, IconHistory, IconBookmark, IconPlay, IconPlus } from "$lib/components/icons";
+  import {
+    IconSearch,
+    IconTrash,
+    IconFileJson,
+    IconHistory,
+    IconBookmark,
+    IconFolder,
+  } from "$lib/components/icons";
   import type { SavedRequestTemplate } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
 
   let {
-    onOpenTemplate = (tpl: SavedRequestTemplate) => {},
+    onOpenTemplate = (_tpl: SavedRequestTemplate) => {},
     onOpenNewRequest = () => {}
   }: {
     onOpenTemplate?: (tpl: SavedRequestTemplate) => void;
@@ -14,6 +21,38 @@
 
   let fileInputRef = $state<HTMLInputElement | null>(null);
   const methods = ["ALL", "GET", "POST", "PUT", "DELETE", "PATCH"];
+
+  // Estado de expansão das pastas (por padrão abertas)
+  let collapsedFolders = $state<Record<string, boolean>>({});
+
+  function toggleFolder(folder: string): void {
+    collapsedFolders[folder] = !collapsedFolders[folder];
+  }
+
+  // Extrai todas as tags únicas de forma 100% dinâmica
+  function getTemplateFolder(tpl: SavedRequestTemplate): string {
+    if (tpl.tag && tpl.tag.trim()) {
+      return tpl.tag.trim();
+    }
+    const parts = tpl.uri.split("/").filter(p => p && !p.startsWith("{") && !p.startsWith(":") && p !== "api" && p !== "v1" && p !== "v2");
+    if (parts.length > 0) {
+      return parts[0];
+    }
+    return "Geral";
+  }
+
+  // Agrupa os templates filtrados em pastas dinâmicas
+  let groupedTemplates = $derived.by(() => {
+    const groups: Record<string, SavedRequestTemplate[]> = {};
+    for (const tpl of relayState.filteredTemplates) {
+      const folder = getTemplateFolder(tpl);
+      if (!groups[folder]) {
+        groups[folder] = [];
+      }
+      groups[folder].push(tpl);
+    }
+    return groups;
+  });
 
   function getMethodBadgeStyle(method: string): string {
     switch (method.toUpperCase()) {
@@ -89,6 +128,7 @@
 
         relayState.setTemplates(templates);
         relayState.sidebarTab = "collection";
+        collapsedFolders = {};
       } catch (err) {
         console.error("Erro ao importar coleção:", err);
       } finally {
@@ -100,89 +140,82 @@
 </script>
 
 <div class="flex flex-col h-full bg-zinc-950 text-zinc-200 select-none">
-  <!-- Top Segmented Tabs: Histórico vs Coleção Salva -->
-  <div class="p-3 border-b border-zinc-800/80 bg-zinc-900/40 space-y-3">
-    <div class="flex items-center space-x-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800/80 text-xs">
-      <button
-        onclick={() => (relayState.sidebarTab = "history")}
-        class="flex-1 py-1 rounded-md transition-all flex items-center justify-center space-x-1.5 {relayState.sidebarTab === 'history' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
-      >
-        <IconHistory size={13} />
-        <span>Histórico</span>
-        {#if relayState.totalRequests > 0}
-          <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-700/80 text-zinc-300 font-mono">
-            {relayState.totalRequests}
-          </span>
-        {/if}
-      </button>
+  <!-- Header Compacto e Minimalista -->
+  <div class="p-2.5 border-b border-zinc-800/80 bg-zinc-900/30 space-y-2">
+    <!-- Linha 1: Abas Principais + Botão de Ação -->
+    <div class="flex items-center justify-between space-x-2">
+      <div class="flex items-center space-x-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800/80 text-xs flex-1">
+        <button
+          onclick={() => (relayState.sidebarTab = "collection")}
+          class="flex-1 py-1 rounded-md transition-all flex items-center justify-center space-x-1.5 {relayState.sidebarTab === 'collection' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+        >
+          <IconBookmark size={12} class={relayState.totalTemplates > 0 ? "text-amber-400" : ""} />
+          <span>Coleção</span>
+          {#if relayState.totalTemplates > 0}
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-mono font-medium">
+              {relayState.totalTemplates}
+            </span>
+          {/if}
+        </button>
 
-      <button
-        onclick={() => (relayState.sidebarTab = "collection")}
-        class="flex-1 py-1 rounded-md transition-all flex items-center justify-center space-x-1.5 {relayState.sidebarTab === 'collection' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
-      >
-        <IconBookmark size={13} class={relayState.totalTemplates > 0 ? "text-amber-400" : ""} />
-        <span>Coleção</span>
-        {#if relayState.totalTemplates > 0}
-          <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-mono font-medium">
-            {relayState.totalTemplates}
-          </span>
-        {/if}
-      </button>
+        <button
+          onclick={() => (relayState.sidebarTab = "history")}
+          class="flex-1 py-1 rounded-md transition-all flex items-center justify-center space-x-1.5 {relayState.sidebarTab === 'history' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+        >
+          <IconHistory size={12} />
+          <span>Histórico</span>
+          {#if relayState.totalRequests > 0}
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-700/80 text-zinc-300 font-mono">
+              {relayState.totalRequests}
+            </span>
+          {/if}
+        </button>
+      </div>
+
+      <!-- Botão Único de Ação Contextual -->
+      {#if relayState.sidebarTab === 'collection'}
+        <input
+          type="file"
+          accept=".json"
+          class="hidden"
+          bind:this={fileInputRef}
+          onchange={handleImportCollectionFile}
+        />
+        <button
+          onclick={() => fileInputRef?.click()}
+          class="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-amber-400 hover:text-amber-300 transition-colors cursor-pointer shrink-0"
+          title="Importar JSON (OpenAPI / Swagger / Postman)"
+        >
+          <IconFileJson size={14} />
+        </button>
+      {:else if relayState.totalRequests > 0}
+        <button
+          onclick={clearTraffic}
+          class="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
+          title="Limpar Histórico (Ctrl+L)"
+        >
+          <IconTrash size={14} />
+        </button>
+      {/if}
     </div>
 
-    <!-- Barra Contextual de Ações (Apenas na aba Coleção ou Limpar no Histórico) -->
-    <div class="flex items-center justify-between px-0.5 min-h-5">
-      <span class="text-[11px] text-zinc-400 font-medium">
-        {relayState.sidebarTab === 'history' ? 'Tráfego Interceptado' : 'Rotas para Teste Rápido'}
-      </span>
-
-      <div class="flex items-center space-x-1.5">
-        {#if relayState.sidebarTab === 'collection'}
-          <label
-            class="text-[10px] text-amber-300 hover:text-white transition-colors px-2 py-0.5 rounded bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 flex items-center space-x-1 cursor-pointer shadow-xs"
-            title="Importar coleção de endpoints (.json)"
-          >
-            <IconFileJson size={11} class="text-amber-400" />
-            <span>Importar JSON</span>
-            <input
-              bind:this={fileInputRef}
-              type="file"
-              accept=".json"
-              onchange={handleImportCollectionFile}
-              class="hidden"
-            />
-          </label>
-        {:else if relayState.exchanges.length > 0}
-          <button
-            onclick={clearTraffic}
-            class="text-[11px] text-zinc-500 hover:text-rose-400 transition-colors p-1 rounded hover:bg-zinc-800 flex items-center space-x-1 cursor-pointer"
-            title="Limpar histórico de requisições (Ctrl+L)"
-          >
-            <IconTrash size={12} />
-          </button>
-        {/if}
-      </div>
-    </div>
-
-    <!-- Search Input -->
-    <div class="relative flex items-center">
-      <div class="absolute left-2.5 flex items-center pointer-events-none text-zinc-500">
-        <IconSearch size={13} />
-      </div>
+    <!-- Linha 2: Busca Rápida -->
+    <div class="relative">
+      <IconSearch size={13} class="absolute left-2.5 top-2.5 text-zinc-500 pointer-events-none" />
       <input
         type="text"
-        placeholder={relayState.sidebarTab === 'history' ? "Buscar no tráfego... (Ctrl+K)" : "Buscar rotas..."}
+        placeholder={relayState.sidebarTab === 'history' ? "Filtrar tráfego... (Ctrl+K)" : "Filtrar rotas ou pastas..."}
         bind:value={relayState.searchQuery}
-        class="w-full bg-zinc-900 border border-zinc-800/90 rounded-md pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 font-mono focus:outline-none focus:border-indigo-500 transition-colors"
+        class="w-full bg-zinc-950 border border-zinc-800 rounded-md pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 font-mono transition-colors"
       />
     </div>
 
-    <!-- Method Pills com espaçamento e cores semânticas -->
-    <div class="flex items-center space-x-1.5 overflow-x-auto pt-1 pb-0.5 no-scrollbar text-[10px] font-mono">
+    <!-- Linha 3: Filtro por Método HTTP -->
+    <div class="flex items-center space-x-1 font-mono text-[10px] select-none">
       {#each methods as m}
         <button
           onclick={() => (relayState.methodFilter = m)}
-          class="px-2 py-0.5 rounded-full border transition-all {getMethodPillActiveStyle(m)}"
+          class="px-2 py-0.5 rounded border transition-all cursor-pointer {getMethodPillActiveStyle(m)}"
         >
           {m}
         </button>
@@ -190,111 +223,161 @@
     </div>
   </div>
 
-  <!-- Content List: History vs Collection -->
-  <div class="flex-1 overflow-y-auto divide-y divide-zinc-900/60">
+  <!-- Content List Area -->
+  <div class="flex-1 overflow-y-auto divide-y divide-zinc-800/40">
     {#if relayState.sidebarTab === "history"}
-      <!-- 1. Aba Histórico de Tráfego Real -->
-      {#if relayState.filteredExchanges.length === 0}
-        <div class="h-full p-6 flex flex-col items-center justify-center text-center space-y-3.5">
-          <div class="p-3.5 rounded-full bg-zinc-900 border border-zinc-800 text-indigo-400 shadow-inner">
-            <IconSearch size={22} />
+      <!-- 1. HISTÓRICO DE TRÁFEGO -->
+      {#each relayState.filteredExchanges as exchange (exchange.id)}
+        <div
+          role="button"
+          tabindex="0"
+          onclick={() => relayState.select(exchange)}
+          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') relayState.select(exchange); }}
+          class="p-2.5 text-left w-full hover:bg-zinc-900/60 transition-colors cursor-pointer flex flex-col space-y-1 {relayState.selectedExchange?.id === exchange.id ? 'bg-zinc-900/90 border-l-2 border-indigo-500' : ''}"
+        >
+          <div class="flex items-center justify-between font-mono text-xs">
+            <span class="px-1.5 py-0.2 rounded text-[10px] font-bold border {getMethodBadgeStyle(exchange.request.method)}">
+              {exchange.request.method}
+            </span>
+
+            <div class="flex items-center space-x-2 text-[11px]">
+              {#if exchange.response}
+                <span class={getStatusStyle(exchange.response.statusCode)}>
+                  {exchange.response.statusCode}
+                </span>
+                <span class="text-zinc-500 text-[10px]">{exchange.response.durationMs}ms</span>
+              {:else if exchange.status === "failed"}
+                <span class="text-rose-400 font-bold text-[10px]">ERR</span>
+              {:else}
+                <span class="text-indigo-400 animate-pulse text-[10px]">...</span>
+              {/if}
+            </div>
           </div>
-          <div class="space-y-1.5">
-            <div class="text-xs font-semibold text-zinc-200">Nenhuma requisição interceptada</div>
-            <p class="text-[11px] text-zinc-400 max-w-[210px] leading-relaxed">
-              Envie chamadas para a porta <span class="font-mono text-indigo-400 font-bold">:{relayState.config.listenPort}</span> ou faça um teste manual.
-            </p>
+
+          <div class="text-xs font-mono text-zinc-300 truncate" title={exchange.request.uri}>
+            {exchange.request.uri}
+          </div>
+        </div>
+      {/each}
+
+      {#if relayState.filteredExchanges.length === 0}
+        <div class="p-8 text-center text-zinc-500 text-xs flex flex-col items-center justify-center space-y-3 h-full select-none">
+          <div class="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-600">
+            <IconSearch size={16} />
+          </div>
+          <div>
+            <div class="font-medium text-zinc-400">Nenhuma requisição interceptada</div>
+            <div class="text-[11px] text-zinc-600 mt-0.5">Envie chamadas para a porta :{relayState.config.listenPort} ou faça um teste manual.</div>
           </div>
           <button
             onclick={onOpenNewRequest}
-            class="text-[11px] px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer"
+            class="text-xs px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 transition-colors font-medium cursor-pointer"
           >
-            <IconPlus size={12} />
-            <span>Enviar Requisição de Teste</span>
+            + Enviar Requisição de Teste
           </button>
         </div>
-      {:else}
-        {#each relayState.filteredExchanges as exchange (exchange.id)}
-          <button
-            type="button"
-            class="w-full text-left p-2.5 hover:bg-zinc-900/50 transition-colors flex items-center justify-between border-l-2 {relayState.selectedExchange?.id === exchange.id ? 'bg-zinc-900/80 border-indigo-500' : 'border-transparent'}"
-            onclick={() => relayState.select(exchange)}
-          >
-            <div class="flex items-center space-x-2.5 overflow-hidden flex-1 pr-2">
-              <span class="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold border {getMethodBadgeStyle(exchange.request.method)}">
-                {exchange.request.method}
-              </span>
-              <span class="text-xs font-mono text-zinc-200 truncate" title={exchange.request.uri}>
-                {exchange.request.uri}
-              </span>
-            </div>
-
-            <div class="flex flex-col items-end shrink-0 text-right">
-              <span class="text-xs font-mono {getStatusStyle(exchange.response?.statusCode, exchange.status)}">
-                {exchange.response ? exchange.response.statusCode : (exchange.status === 'failed' ? 'ERR' : '...')}
-              </span>
-              <span class="text-[10px] font-mono text-zinc-500">
-                {exchange.response ? `${exchange.response.durationMs}ms` : ''}
-              </span>
-            </div>
-          </button>
-        {/each}
       {/if}
     {:else}
-      <!-- 2. Aba Coleção de Requisições Salvas (Prontas para Testar) -->
-      {#if relayState.filteredTemplates.length === 0}
-        <div class="h-full p-6 flex flex-col items-center justify-center text-center space-y-3">
-          <div class="p-3.5 rounded-full bg-zinc-900 border border-zinc-800 text-amber-400">
-            <IconBookmark size={22} />
-          </div>
-          <div class="space-y-1">
-            <div class="text-xs font-semibold text-zinc-200">Nenhuma rota na coleção</div>
-            <p class="text-[11px] text-zinc-400 max-w-[210px] leading-relaxed">
-              Importe um arquivo de coleção JSON para rodar rotas com 1 clique e auto-JWT.
-            </p>
-          </div>
-        </div>
-      {:else}
-        {#each relayState.filteredTemplates as template (template.id)}
-          <div
-            class="w-full text-left p-3 hover:bg-zinc-900/50 transition-colors flex flex-col space-y-1.5 border-l-2 {relayState.selectedTemplate?.id === template.id ? 'bg-zinc-900/80 border-amber-500' : 'border-transparent'}"
-          >
-            <div class="flex items-center justify-between">
-              <span class="text-xs font-semibold text-zinc-200 truncate flex items-center space-x-1.5">
-                <span>{template.name}</span>
-                {#if template.requiresAuth}
-                  <span class="text-[9px] px-1 py-0.2 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono">
-                    JWT
-                  </span>
-                {/if}
+      <!-- 2. COLEÇÃO DE ROTAS EM PASTAS NATURAIS -->
+      {#if Object.keys(groupedTemplates).length > 1}
+        {#each Object.entries(groupedTemplates) as [folderName, items]}
+          <div class="border-b border-zinc-800/30 last:border-b-0">
+            <!-- Cabeçalho da Pasta Limpo -->
+            <button
+              onclick={() => toggleFolder(folderName)}
+              class="w-full px-3 py-2 bg-zinc-900/30 hover:bg-zinc-800/50 flex items-center justify-between text-left transition-colors cursor-pointer"
+            >
+              <div class="flex items-center space-x-2 truncate">
+                <span class="text-zinc-500 text-[9px] transform transition-transform {collapsedFolders[folderName] ? '' : 'rotate-90'}">
+                  ▶
+                </span>
+                <IconFolder size={13} class="text-amber-400/90 shrink-0" />
+                <span class="text-xs font-semibold text-zinc-200 truncate">{folderName}</span>
+              </div>
+              <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-800/80 text-zinc-400 font-mono">
+                {items.length}
               </span>
+            </button>
 
-              <button
-                onclick={() => onOpenTemplate(template)}
-                class="text-[11px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-colors flex items-center space-x-1 shadow-xs cursor-pointer"
-                title="Abrir no editor e rodar chamada"
-              >
-                <IconPlay size={10} class="fill-current" />
-                <span>Testar</span>
-              </button>
-            </div>
+            <!-- Itens dentro da Pasta -->
+            {#if !collapsedFolders[folderName]}
+              <div class="divide-y divide-zinc-800/20 bg-zinc-950/40">
+                {#each items as tpl (tpl.id)}
+                  <div
+                    role="button"
+                    tabindex="0"
+                    onclick={() => onOpenTemplate(tpl)}
+                    onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenTemplate(tpl); }}
+                    class="px-3 py-2 text-left w-full hover:bg-zinc-900/70 transition-colors cursor-pointer flex flex-col space-y-0.5 group border-l-2 border-transparent hover:border-amber-500/60 pl-6"
+                  >
+                    <div class="flex items-center space-x-2 font-mono text-xs">
+                      <span class="px-1.5 py-0.2 rounded text-[9px] font-bold border {getMethodBadgeStyle(tpl.method)}">
+                        {tpl.method}
+                      </span>
+                      <span class="text-xs font-medium text-zinc-200 truncate group-hover:text-amber-200 transition-colors">
+                        {tpl.name}
+                      </span>
+                    </div>
 
-            <div class="flex items-center space-x-2">
-              <span class="text-[9px] px-1.5 py-0.2 rounded font-mono font-bold border {getMethodBadgeStyle(template.method)}">
-                {template.method}
-              </span>
-              <span class="text-xs font-mono text-zinc-400 truncate">
-                {template.uri}
-              </span>
-            </div>
-
-            {#if template.description}
-              <div class="text-[10px] text-zinc-500 leading-tight">
-                {template.description}
+                    <div class="text-[11px] font-mono text-zinc-500 truncate" title={tpl.uri}>
+                      {tpl.uri}
+                    </div>
+                  </div>
+                {/each}
               </div>
             {/if}
           </div>
         {/each}
+      {:else}
+        <!-- Lista simples quando tem poucas rotas ou apenas 1 pasta -->
+        {#each relayState.filteredTemplates as tpl (tpl.id)}
+          <div
+            role="button"
+            tabindex="0"
+            onclick={() => onOpenTemplate(tpl)}
+            onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenTemplate(tpl); }}
+            class="p-2.5 text-left w-full hover:bg-zinc-900/60 transition-colors cursor-pointer flex flex-col space-y-1 group border-l-2 border-transparent hover:border-amber-500/60"
+          >
+            <div class="flex items-center justify-between font-mono text-xs">
+              <span class="px-1.5 py-0.2 rounded text-[10px] font-bold border {getMethodBadgeStyle(tpl.method)}">
+                {tpl.method}
+              </span>
+
+              {#if tpl.tag}
+                <span class="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 font-sans truncate max-w-[120px]">
+                  {tpl.tag}
+                </span>
+              {/if}
+            </div>
+
+            <div class="text-xs font-semibold text-zinc-200 truncate group-hover:text-white transition-colors">
+              {tpl.name}
+            </div>
+
+            <div class="text-[11px] font-mono text-zinc-500 truncate" title={tpl.uri}>
+              {tpl.uri}
+            </div>
+          </div>
+        {/each}
+      {/if}
+
+      {#if relayState.filteredTemplates.length === 0}
+        <div class="p-8 text-center text-zinc-500 text-xs flex flex-col items-center justify-center space-y-3 h-full select-none">
+          <div class="w-10 h-10 rounded-full bg-zinc-900 border border-zinc-800 flex items-center justify-center text-amber-500/60">
+            <IconBookmark size={16} />
+          </div>
+          <div>
+            <div class="font-medium text-zinc-400">Nenhuma rota encontrada</div>
+            <div class="text-[11px] text-zinc-600 mt-0.5">Tente limpar o filtro de busca ou importe uma nova especificação.</div>
+          </div>
+          <button
+            onclick={() => fileInputRef?.click()}
+            class="text-xs px-3 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 transition-colors font-medium cursor-pointer flex items-center space-x-1.5"
+          >
+            <IconFileJson size={13} />
+            <span>Importar JSON</span>
+          </button>
+        </div>
       {/if}
     {/if}
   </div>

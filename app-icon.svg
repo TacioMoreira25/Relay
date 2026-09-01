@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Gradiente de fundo escuro moderno -->
+    <linearGradient id="relayBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#18181b"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </linearGradient>
+
+    <!-- Gradiente do traço principal (Índigo -> Ciano) -->
+    <linearGradient id="relayFlow" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="50%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#06b6d4"/>
+    </linearGradient>
+
+    <!-- Brilho sutil dos nós de rede -->
+    <filter id="relayGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+
+  <!-- Fundo com cantos arredondados (estilo ícone desktop moderno / KDE) -->
+  <rect width="512" height="512" rx="112" fill="url(#relayBg)" stroke="#27272a" stroke-width="8"/>
+
+  <!-- Trilha de conexão/repasse (Estilização da letra R e fluxo de rede) -->
+  <g transform="translate(32, 16)">
+    <!-- Linha de base vertical (Incoming stream) -->
+    <path d="M140 380 V 120" stroke="#3f3f46" stroke-width="28" stroke-linecap="round"/>
+    <path d="M140 380 V 220" stroke="url(#relayFlow)" stroke-width="28" stroke-linecap="round"/>
+
+    <!-- Arco superior de redirecionamento / loop do R -->
+    <path d="M140 120 H 260 C 330 120 330 240 260 240 H 140" 
+          fill="none" 
+          stroke="url(#relayFlow)" 
+          stroke-width="28" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"/>
+
+    <!-- Derivação/Repasse inferior (Downstream/Outgoing) -->
+    <path d="M240 240 L 330 380" 
+          stroke="url(#relayFlow)" 
+          stroke-width="28" 
+          stroke-linecap="round"/>
+
+    <!-- Nó 1: Origem da Requisição -->
+    <circle cx="140" cy="120" r="18" fill="#6366f1" filter="url(#relayGlow)"/>
+
+    <!-- Nó 2: Ponto de Interceptação / Loop -->
+    <circle cx="260" cy="240" r="14" fill="#818cf8"/>
+
+    <!-- Nó 3: Destino Ativo / Forward (Verde Esmeralda de tráfego liberado) -->
+    <circle cx="330" cy="380" r="20" fill="#10b981" filter="url(#relayGlow)"/>
+  </g>
+</svg>

@@ -14,28 +14,19 @@ pub struct DiscoveredTarget {
     pub source: String, // "auto_discovered", "manual", "remote"
 }
 
-/// Infere o nome típico do serviço dev com base na porta
-fn infer_service_label(port: u16) -> &'static str {
-    match port {
-        3000 => "Node / Fastify / Next API",
-        3001 => "Secondary API / NestJS",
-        4200 => "Angular Dev Server",
-        5000 => "Flask / Python Web",
-        5173 => "Vite / Svelte / Vue",
-        8000 => "Django / FastAPI / PHP",
-        8081 => "Metro Bundler (React Native)",
-        _ => "Local Service",
-    }
+/// Formata a identificação do serviço de forma 100% genérica e neutra
+fn format_target_label(_host: &str, port: u16) -> String {
+    format!("Localhost :{}", port)
 }
 
-/// Testa se uma porta TCP está ativa de forma não-bloqueante com timeout curto (120ms)
+/// Testa se uma porta TCP está ativa de forma não-bloqueante com timeout curto (100ms)
 async fn probe_port(host: &str, port: u16, listen_port: u16) -> bool {
     // Nunca escaneia a si mesmo
     if port == listen_port {
         return false;
     }
     let addr = format!("{}:{}", host, port);
-    match timeout(Duration::from_millis(120), TcpStream::connect(&addr)).await {
+    match timeout(Duration::from_millis(100), TcpStream::connect(&addr)).await {
         Ok(Ok(_stream)) => true,
         _ => false,
     }
@@ -43,7 +34,13 @@ async fn probe_port(host: &str, port: u16, listen_port: u16) -> bool {
 
 /// Realiza a varredura concorrente de portas locais de desenvolvimento comuns excluindo a própria porta do proxy
 pub async fn scan_local_targets_with_listen_port(listen_port: u16) -> Vec<DiscoveredTarget> {
-    let dev_ports: &[u16] = &[3000, 3001, 4200, 5000, 5173, 8000, 8081];
+    // Faixa ampla de portas dev (3000-3010, 4000, 4200, 5000, 5173-5175, 8000, 8081-8085)
+    let dev_ports: &[u16] = &[
+        3000, 3001, 3002, 3003, 3004, 3005,
+        4000, 4200,
+        5000, 5173, 5174, 5175,
+        8000, 8001, 8081, 8082, 8083, 8084, 8085,
+    ];
     let mut tasks = Vec::new();
 
     for &port in dev_ports {
@@ -52,7 +49,7 @@ pub async fn scan_local_targets_with_listen_port(listen_port: u16) -> Vec<Discov
             let is_active = probe_port("127.0.0.1", port, lp).await;
             DiscoveredTarget {
                 id: format!("auto-127.0.0.1-{}", port),
-                label: infer_service_label(port).to_string(),
+                label: format_target_label("127.0.0.1", port),
                 host: "127.0.0.1".to_string(),
                 port,
                 is_active,
@@ -82,10 +79,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_infer_service_label() {
-        assert_eq!(infer_service_label(3000), "Node / Fastify / Next API");
-        assert_eq!(infer_service_label(5173), "Vite / Svelte / Vue");
-        assert_eq!(infer_service_label(4200), "Angular Dev Server");
-        assert_eq!(infer_service_label(9999), "Local Service");
+    fn test_format_target_label() {
+        assert_eq!(format_target_label("127.0.0.1", 3000), "Localhost :3000");
+        assert_eq!(format_target_label("127.0.0.1", 8081), "Localhost :8081");
     }
 }

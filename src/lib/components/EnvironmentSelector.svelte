@@ -20,14 +20,6 @@
     try {
       const results = await invoke<DiscoveredTarget[]>("scan_active_targets");
       relayState.discoveredTargets = results;
-
-      // Se nenhum alvo estiver selecionado e houver apenas 1 serviço ativo, conecta automaticamente
-      if (!relayState.activeTarget) {
-        const activeOne = results.find(r => r.isActive);
-        if (activeOne) {
-          handleSelectDiscovered(activeOne);
-        }
-      }
     } catch (e) {
       console.warn("Falha ao escanear portas locais:", e);
     } finally {
@@ -122,6 +114,13 @@
     newIsHttps = false;
   }
 
+  function handleToggleOpen(): void {
+    isOpen = !isOpen;
+    if (isOpen) {
+      scanPorts();
+    }
+  }
+
   onMount(() => {
     scanPorts();
   });
@@ -130,9 +129,8 @@
 <div class="relative inline-block text-left">
   <!-- Botão Gatilho (TopBar) -->
   <button
-    onclick={() => (isOpen = !isOpen)}
+    onclick={handleToggleOpen}
     class="flex items-center space-x-2 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 px-3 py-1.5 rounded-lg text-xs font-mono text-zinc-200 transition-all cursor-pointer shadow-xs"
-    title="Selecionar ou alternar target/ambiente ativo"
   >
     {#if relayState.activeTarget}
       <div class="w-2 h-2 rounded-full {relayState.activeTarget.isActive ? 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse' : 'bg-zinc-500'}"></div>
@@ -160,7 +158,6 @@
           <button
             onclick={scanPorts}
             class="text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer text-[10px] lowercase flex items-center space-x-1"
-            title="Escanear portas locais novamente"
           >
             <span>{relayState.isScanningTargets ? 'escaneando...' : '↻ escanear'}</span>
           </button>

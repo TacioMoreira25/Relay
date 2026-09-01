@@ -5,8 +5,11 @@
   import ExportModal from "$lib/components/ExportModal.svelte";
   import TipsModal from "$lib/components/TipsModal.svelte";
   import ReplayModal from "$lib/components/ReplayModal.svelte";
+  import ProjectModal from "$lib/components/ProjectModal.svelte";
   import JwtManager from "$lib/components/JwtManager.svelte";
   import EnvironmentSelector from "$lib/components/EnvironmentSelector.svelte";
+  import ProjectSelector from "$lib/components/ProjectSelector.svelte";
+  import Logo from "$lib/components/Logo.svelte";
   import {
     IconActivity,
     IconShield,
@@ -27,6 +30,11 @@
   let isExportOpen = $state(false);
   let isTipsOpen = $state(false);
   let isNewRequestOpen = $state(false);
+  
+  // Project Modal
+  let isProjectModalOpen = $state(false);
+  let selectedProjectIdToEdit = $state<string | null>(null);
+
   let activeTestingTemplate = $state<SavedRequestTemplate | null>(null);
 
   function handleOpenTemplate(tpl: SavedRequestTemplate): void {
@@ -34,8 +42,23 @@
     isNewRequestOpen = true;
   }
 
+  function handleOpenCreateProject(): void {
+    selectedProjectIdToEdit = null;
+    isProjectModalOpen = true;
+  }
+
+  function handleOpenEditProject(id: string): void {
+    selectedProjectIdToEdit = id;
+    isProjectModalOpen = true;
+  }
+
   async function syncInitialState(): Promise<void> {
     try {
+      // Sincroniza a configuração salva do projeto ativo para o backend Rust
+      if (relayState.config) {
+        await invoke("update_proxy_config", { config: relayState.config });
+      }
+
       const items = await invoke<HttpExchange[]>("get_exchanges");
       if (items && items.length > 0) {
         relayState.exchanges = items.slice().reverse();
@@ -124,15 +147,16 @@
   });
 </script>
 
-<main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-200 font-sans select-none antialiased">
+<main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-200 font-sans select-none antialiased relative">
   <!-- Minimalist Clean TopBar -->
-  <header class="h-12 border-b border-zinc-800/80 bg-zinc-900/70 backdrop-blur-md px-4 flex items-center justify-between">
-    <!-- Brand, Views & Smart Environment Dropdown -->
-    <div class="flex items-center space-x-4">
-      <div class="flex items-center space-x-2 mr-2">
-        <div class="w-2.5 h-2.5 rounded-full {relayState.isProxyRunning ? 'bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)] animate-pulse' : 'bg-zinc-600'}"></div>
-        <span class="text-xs font-bold tracking-wider text-zinc-100 uppercase">Relay</span>
-      </div>
+  <header class="relative z-30 h-12 border-b border-zinc-800/80 bg-zinc-900/70 backdrop-blur-md px-4 flex items-center justify-between">
+    <!-- Brand, Projects, Views & Smart Environment Dropdown -->
+    <div class="flex items-center space-x-3">
+      <!-- Novo Logo SVG Vetorial -->
+      <Logo />
+
+      <!-- Seletor de Projetos -->
+      <ProjectSelector onOpenCreate={handleOpenCreateProject} onOpenEdit={handleOpenEditProject} />
 
       <!-- Segmented View Tabs -->
       <nav class="flex items-center space-x-1 bg-zinc-950/80 p-0.5 rounded-lg border border-zinc-800/80 text-xs">
@@ -244,7 +268,8 @@
     {/if}
   </div>
 
-  <!-- Modals -->
+  <!-- Modals Renderizados na Raiz do App (Sem sobreposição/cortes de header) -->
+  <ProjectModal bind:isOpen={isProjectModalOpen} bind:projectId={selectedProjectIdToEdit} />
   <ProxyConfigModal bind:isOpen={isConfigOpen} />
   <ExportModal bind:isOpen={isExportOpen} />
   <TipsModal bind:isOpen={isTipsOpen} />

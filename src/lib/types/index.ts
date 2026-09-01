@@ -87,6 +87,16 @@ export interface ProxyConfig {
   routes: RouteRule[];
 }
 
+export interface RelayProject {
+  id: string;
+  name: string;
+  description?: string;
+  config: ProxyConfig;
+  savedTemplates: SavedRequestTemplate[];
+  savedEnvironments: TargetEnvironment[];
+  createdAt: number;
+}
+
 export interface ExtractedJwt {
   token: string;
   source: string;
@@ -101,6 +111,5 @@ export interface ExtractedJwt {
 export interface GeneratedCa {
   certPem: string;
   keyPem: string;
-  commonName: string;
-  createdAt: number;
+  expiresAt: number;
 }

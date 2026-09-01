@@ -142,7 +142,7 @@ pub fn resolve_route_target(uri_path: &str, config: &ProxyConfig) -> (String, u1
     (res.host, res.port, res.latency_ms)
 }
 
-async fn handle_proxy_request(
+pub async fn handle_proxy_request(
     req: Request<hyper::body::Incoming>,
     app: Arc<AppHandle>,
 ) -> Result<Response<BoxBody<Bytes, Infallible>>, Infallible> {

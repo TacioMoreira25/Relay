@@ -21,7 +21,9 @@ O Relay foi projetado para substituir clientes pesados de API por um proxy leve 
 
 Construido com arquitetura nativa em **Rust (Tokio + Hyper)** e **Tauri v2 com Svelte 5**:
 * **Streaming Assincrono:** Repasse de trafego quase instantaneo com fatias de bytes em memoria.
-* **Auto-Descoberta de Portas:** Escaneamento nao-bloqueante de portas e servicos locais de desenvolvimento.
+* **Sistema de Multi-Projetos:** Workspaces isolados com persistencia automatica para gerenciar rotas, mocks e colecoes sem misturar APIs.
+* **Importador Universal:** Suporte nativo a importacao direta de arquivos OpenAPI 3.0 / Swagger e colecoes Postman v2.1 em pastas dinamicas.
+* **Auto-Descoberta de Portas:** Escaneamento nao-bloqueante e neutro de portas e servicos locais de desenvolvimento.
 * **Gerenciamento de Ambientes:** Alternancia rapida entre servicos locais, rotas de mock e endpoints de homologacao.
 * **Captura Inteligente de Sessao:** Deteccao automatica e decodificacao de tokens JWT no trafego.
 * **Interface Fluida:** Reatividade nativa sem Virtual DOM utilizando Svelte 5 Runes.
@@ -39,7 +41,7 @@ Voce pode instalar e executar o Relay diretamente no seu sistema operacional Lin
 npm run tauri build -- --bundles rpm
 
 # Instala no sistema
-sudo dnf install -y src-tauri/target/release/bundle/rpm/Relay-0.1.0-1.x86_64.rpm
+sudo dnf install -y src-tauri/target/release/bundle/rpm/relay-0.1.0-1.x86_64.rpm
 ```
 
 ### Opcao 2: Instalar no Ubuntu / Debian / Mint (.deb)
@@ -49,7 +51,7 @@ sudo dnf install -y src-tauri/target/release/bundle/rpm/Relay-0.1.0-1.x86_64.rpm
 npm run tauri build -- --bundles deb
 
 # Instala no sistema
-sudo dpkg -i src-tauri/target/release/bundle/deb/Relay_0.1.0_amd64.deb
+sudo dpkg -i src-tauri/target/release/bundle/deb/relay_0.1.0_amd64.deb
 ```
 
 ### Opcao 3: Executavel Binario Direto (Portatil)
@@ -63,7 +65,7 @@ mkdir -p ~/.local/bin
 cp src-tauri/target/release/relay ~/.local/bin/
 ```
 
-Apos a instalacao, o **Relay** ficara disponivel no menu de aplicativos do seu ambiente desktop (GNOME, KDE Plasma, XFCE) e podera ser iniciado digitando `relay` no terminal.
+Apos a instalacao, o **Relay** ficara disponivel no menu de aplicativos do seu ambiente desktop (GNOME, KDE Plasma, XFCE) com seu icone oficial e podera ser iniciado digitando `relay` no terminal.
 
 ---
 
@@ -118,11 +120,8 @@ sequenceDiagram
 | **Proxy Engine** | Motor TCP assincrono Tokio + Hyper, rotas de Mock e Chaos Simulator |
 | **Live Inspector** | Visualizacao em tempo real de requisicoes, headers, payloads e cURL generator |
 | **JWT & Session** | Deteccao automatica e decodificacao de claims JWT |
-| **HTTP Replay** | Reenvio instantaneo e encadeamento automatico de variaveis de resposta |
-| **Target Discovery** | Varredura assincrona de portas de desenvolvimento no Linux |
-
----
-
-## Licenca
-
-Distribuido sob a licenca MIT.
+| **HTTP Replay** | Disparo de requisicoes manuais com variaveis dinamicas (`{{token}}`, `{{id}}`) |
+| **Chaos Engineering** | Injeção de latencia artificial com jitter e simulacao de falhas HTTP |
+| **Export & CA** | Exportacao para HAR 1.2, OpenAPI 3.0 e geracao de certificados CA locais |
+| **Multi-Projetos & Colecoes** | Workspaces isolados, importador OpenAPI/Postman e pastas em arvore |
+| **Ambientes & Scanner** | Deteccao assincrona de portas ativas no Linux e alvos personalizados |
