@@ -390,7 +390,7 @@
           bind:value={body}
           onkeydown={handleBodyKeyDown}
           rows="7"
-          placeholder={`{\n  "email": "tacio@teste.com",\n  "password": "senha_segura_123"\n}`}
+          placeholder={`{\n  "email": "test@teste.com",\n  "password": "senha_segura_123"\n}`}
           class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500 leading-relaxed resize-y"
           spellcheck="false"
         ></textarea>

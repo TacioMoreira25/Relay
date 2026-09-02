@@ -20,4 +20,4 @@ O Inspecionador exibe de forma reativa e sem latência perceptível todas as req
 * **Formatador de JSON:** Exibição do payload body com seleção rápida de texto e suporte a caracteres especiais.
 
 ## 3. Gestão de Estado com Svelte 5 Runes
-Toda a sincronização da interface é centralizada no [`traffic.svelte.ts`](file:///home/tacio/Documentos/Dev/Rust/Relay/src/lib/stores/traffic.svelte.ts), utilizando `$state` para as trocas HTTP e `$derived` para contadores derivados em tempo real sem renderizações desnecessárias.
+Toda a sincronização da interface é centralizada no [`traffic.svelte.ts`], utilizando `$state` para as trocas HTTP e `$derived` para contadores derivados em tempo real sem renderizações desnecessárias.

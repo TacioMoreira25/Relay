@@ -250,7 +250,13 @@ pub async fn parse_collection_json(
         ) {
             for it in items {
                 if let Some(sub_items) = it.get("item").and_then(|sub| sub.as_array()) {
-                    let folder_name = it.get("name").and_then(|n| n.as_str()).map(|s| s.to_string());
+                    let folder_name = it.get("name").and_then(|n| n.as_str()).map(|s| {
+                        // Limpa emojis e prefixos como "📁 1. " para obter uma tag limpa
+                        s.trim_start_matches(|c: char| !c.is_alphanumeric() && !c.is_whitespace() || c.is_whitespace())
+                         .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.')
+                         .trim()
+                         .to_string()
+                    });
                     parse_postman_items(sub_items, folder_name, out, counter);
                 } else if let Some(req) = it.get("request") {
                     *counter += 1;
@@ -266,19 +272,24 @@ pub async fn parse_collection_json(
                         .unwrap_or("GET")
                         .to_uppercase();
 
-                    let mut uri = "/".to_string();
-                    if let Some(url_obj) = req.get("url") {
-                        if let Some(raw) = url_obj.get("raw").and_then(|r| r.as_str()) {
-                            if raw.starts_with('/') {
-                                uri = raw.to_string();
-                            } else if let Some(pos) = raw.find("://") {
-                                if let Some(slash_pos) = raw[pos + 3..].find('/') {
-                                    uri = raw[pos + 3 + slash_pos..].to_string();
+                    let mut uri = String::new();
+                    if let Some(url_val) = req.get("url") {
+                        if let Some(raw_str) = url_val.as_str() {
+                            uri = extract_uri_from_raw(raw_str);
+                        } else if let Some(url_obj) = url_val.as_object() {
+                            if let Some(raw) = url_obj.get("raw").and_then(|r| r.as_str()) {
+                                uri = extract_uri_from_raw(raw);
+                            } else if let Some(path_arr) = url_obj.get("path").and_then(|p| p.as_array()) {
+                                let path_segments: Vec<&str> = path_arr.iter().filter_map(|s| s.as_str()).collect();
+                                if !path_segments.is_empty() {
+                                    uri = format!("/{}", path_segments.join("/"));
                                 }
-                            } else if let Some(slash_pos) = raw.find('/') {
-                                uri = raw[slash_pos..].to_string();
                             }
                         }
+                    }
+
+                    if uri.is_empty() {
+                        uri = "/".to_string();
                     }
 
                     let mut headers = Vec::new();
@@ -302,7 +313,7 @@ pub async fn parse_collection_json(
                         .and_then(|r| r.as_str())
                         .map(|s| s.to_string());
 
-                    let requires_auth = req.get("auth").is_some();
+                    let requires_auth = req.get("auth").is_some() || headers.iter().any(|h| h.key.eq_ignore_ascii_case("authorization"));
 
                     out.push(SavedTemplateOutput {
                         id: format!("postman-{}", counter),
@@ -316,6 +327,34 @@ pub async fn parse_collection_json(
                         requires_auth,
                     });
                 }
+            }
+        }
+
+        fn extract_uri_from_raw(raw: &str) -> String {
+            let without_var = if raw.starts_with("{{") {
+                if let Some(end_idx) = raw.find("}}") {
+                    &raw[end_idx + 2..]
+                } else {
+                    raw
+                }
+            } else {
+                raw
+            };
+
+            if without_var.starts_with('/') {
+                without_var.to_string()
+            } else if let Some(pos) = without_var.find("://") {
+                if let Some(slash_pos) = without_var[pos + 3..].find('/') {
+                    without_var[pos + 3 + slash_pos..].to_string()
+                } else {
+                    "/".to_string()
+                }
+            } else if let Some(slash_pos) = without_var.find('/') {
+                without_var[slash_pos..].to_string()
+            } else if !without_var.is_empty() {
+                format!("/{}", without_var)
+            } else {
+                "/".to_string()
             }
         }
 
@@ -524,13 +563,20 @@ pub async fn execute_replay(
         .uri(payload.uri.as_str());
 
     for h in &payload.headers {
-        if let (Ok(hn), Ok(hv)) = (
-            HeaderName::from_bytes(h.key.as_bytes()),
-            HeaderValue::from_str(&h.value),
-        ) {
-            req_builder = req_builder.header(hn, hv);
+        if !h.key.eq_ignore_ascii_case("host")
+            && !h.key.eq_ignore_ascii_case("connection")
+            && !h.key.eq_ignore_ascii_case("transfer-encoding")
+        {
+            if let (Ok(hn), Ok(hv)) = (
+                HeaderName::from_bytes(h.key.as_bytes()),
+                HeaderValue::from_str(&h.value),
+            ) {
+                req_builder = req_builder.header(hn, hv);
+            }
         }
     }
+    // Sempre injeta o Host correto do upstream
+    req_builder = req_builder.header("host", &upstream_addr);
 
     let req_body = http_body_util::Full::new(body_bytes);
     let req = req_builder
