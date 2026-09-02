@@ -94,7 +94,7 @@
             class="text-xs px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-md flex items-center space-x-1.5 cursor-pointer"
           >
             <IconPlay size={12} class="fill-current" />
-            <span>Iniciar Proxy (:8080)</span>
+            <span>Iniciar Proxy (:{relayState.config.listenPort})</span>
           </button>
         </div>
       {:else}
@@ -220,10 +220,15 @@
                 </thead>
                 <tbody class="divide-y divide-zinc-800/40">
                   {#each exchange.request.headers as header}
-                    <tr class="hover:bg-zinc-900/50 transition-colors">
-                      <td class="py-1.5 px-3 text-indigo-300 font-medium">{header.key}</td>
-                      <td class="py-1.5 px-3 text-zinc-300 break-all select-text">{header.value}</td>
-                    </tr>
+                      <tr class="hover:bg-zinc-900/50 transition-colors">
+                        <td class="py-1.5 px-3 text-indigo-300 font-medium">{header.key}</td>
+                        <td class="py-1.5 px-3 text-zinc-300 break-all select-text">
+                          {header.value}
+                          {#if header.key.toLowerCase() === 'date'}
+                            <span class="text-[10px] text-zinc-500 ml-2 select-none" title="Horário Local">({new Date(header.value).toLocaleString()})</span>
+                          {/if}
+                        </td>
+                      </tr>
                   {/each}
                 </tbody>
               </table>
@@ -260,7 +265,7 @@
               </div>
 
               <div class="border border-zinc-800/80 rounded-lg overflow-hidden bg-zinc-900/30 p-3">
-                <pre class="text-xs font-mono text-zinc-200 overflow-x-auto whitespace-pre-wrap leading-relaxed select-text">{parsed.formatted}</pre>
+                <pre class="text-xs font-mono text-zinc-200 overflow-x-auto whitespace-pre-wrap leading-relaxed break-all w-full select-text">{parsed.formatted}</pre>
               </div>
             </div>
           {/if}
@@ -323,7 +328,12 @@
                     {#each res.headers as header}
                       <tr class="hover:bg-zinc-900/50 transition-colors">
                         <td class="py-1.5 px-3 text-emerald-300 font-medium">{header.key}</td>
-                        <td class="py-1.5 px-3 text-zinc-300 break-all select-text">{header.value}</td>
+                        <td class="py-1.5 px-3 text-zinc-300 break-all select-text">
+                          {header.value}
+                          {#if header.key.toLowerCase() === 'date'}
+                            <span class="text-[10px] text-zinc-500 ml-2 select-none" title="Horário Local">({new Date(header.value).toLocaleString()})</span>
+                          {/if}
+                        </td>
                       </tr>
                     {/each}
                   </tbody>
@@ -360,7 +370,7 @@
                 </div>
 
                 <div class="border border-zinc-800/80 rounded-lg overflow-hidden bg-zinc-900/30 p-3">
-                  <pre class="text-xs font-mono text-zinc-200 overflow-x-auto whitespace-pre-wrap leading-relaxed select-text">{parsedRes.formatted}</pre>
+                  <pre class="text-xs font-mono text-zinc-200 overflow-x-auto whitespace-pre-wrap leading-relaxed break-all w-full select-text">{parsedRes.formatted}</pre>
                 </div>
               </div>
             {/if}

@@ -1,10 +1,11 @@
 <script lang="ts">
+  import { relayState } from "$lib/stores/traffic.svelte";
   import { IconCommand, IconTerminal, IconShield, IconActivity, IconFileJson } from "$lib/components/icons";
 
   let { isOpen = $bindable(false) }: { isOpen: boolean } = $props();
 
   const shortcuts = [
-    { key: "Ctrl + P", desc: "Iniciar / Parar o Proxy HTTP (:8080)" },
+    { key: "Ctrl + P", desc: `Iniciar / Parar o Proxy HTTP (:${relayState.config.listenPort})` },
     { key: "Ctrl + N", desc: "Abrir disparador de nova requisição direta" },
     { key: "Ctrl + K", desc: "Focar no campo de busca de tráfego" },
     { key: "Ctrl + L", desc: "Limpar histórico de requisições" },
@@ -21,7 +22,7 @@
     },
     {
       title: "Como usar no Frontend?",
-      desc: "Basta mudar a URL base da sua API no frontend de 'http://localhost:3000' para 'http://localhost:8080'. Todas as chamadas, logins e dados passarão automaticamente pelo Relay.",
+      desc: `Basta mudar a URL base da sua API no frontend de 'http://localhost:3000' para 'http://localhost:${relayState.config.listenPort}'. Todas as chamadas, logins e dados passarão automaticamente pelo Relay.`,
       icon: IconFileJson,
       color: "text-emerald-400",
     },

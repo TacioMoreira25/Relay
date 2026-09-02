@@ -1,7 +1,7 @@
 <script lang="ts">
   import { relayState } from "$lib/stores/traffic.svelte";
   import type { HeaderEntry, HttpExchange, HttpMethod, SavedRequestTemplate } from "$lib/types";
-  import { IconPlay, IconKey, IconSparkles, IconTerminal } from "$lib/components/icons";
+  import { IconPlay, IconKey, IconSparkles, IconTerminal, IconBookmark, IconTrash } from "$lib/components/icons";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
@@ -17,6 +17,7 @@
 
   let method = $state<HttpMethod>("POST");
   let uri = $state<string>("/");
+  let routeName = $state<string>("");
   let headers = $state<HeaderEntry[]>([]);
   let body = $state<string>("");
   let isSending = $state<boolean>(false);
@@ -29,6 +30,7 @@
   // Inicializa uma única vez na montagem do modal
   onMount(() => {
     if (template) {
+      routeName = template.name;
       method = template.method;
       uri = template.uri;
       headers = template.headers ? template.headers.map(h => ({ ...h })) : [];
@@ -183,6 +185,36 @@
     }
   }
 
+  function handleSaveRoute() {
+    if (!routeName.trim()) {
+      statusMessage = "Erro: Dê um nome para a rota antes de salvar.";
+      setTimeout(() => { statusMessage = null; }, 3000);
+      return;
+    }
+
+    const tpl: SavedRequestTemplate = {
+      id: template ? template.id : `tpl-${Date.now()}`,
+      name: routeName.trim(),
+      method,
+      uri,
+      headers: headers.filter(h => h.key.trim() !== ""),
+      body,
+    };
+
+    relayState.saveTemplate(tpl);
+    statusMessage = "Rota salva com sucesso na Coleção!";
+    setTimeout(() => { statusMessage = null; }, 3000);
+  }
+
+  function handleDeleteRoute() {
+    if (!template) return;
+    relayState.deleteTemplate(template.id);
+    statusMessage = "Rota excluída com sucesso da Coleção!";
+    setTimeout(() => {
+      closeModal();
+    }, 1500);
+  }
+
   function getMethodColorClass(m: string): string {
     switch (m) {
       case "GET": return "text-sky-400 bg-sky-950/40 border-sky-500/40";
@@ -203,13 +235,19 @@
   onkeydown={(e) => { if (e.key === "Escape") closeModal(); }}
 >
   <div class="bg-zinc-900 border border-zinc-800 rounded-xl max-w-2xl w-full p-5 shadow-2xl space-y-4 max-h-[90vh] flex flex-col">
-    <!-- Header Didático -->
-    <div class="flex items-center justify-between border-b border-zinc-800 pb-3 select-none">
-      <div class="flex items-center space-x-2">
-        <IconTerminal size={14} class="text-indigo-400" />
-        <h3 class="text-xs font-bold uppercase tracking-wider text-zinc-100">
-          {template ? `Testar Rota: ${template.name}` : 'Disparador & Replay de Requisição'}
-        </h3>
+    <!-- Header Didático e Editável -->
+    <div class="flex items-center justify-between border-b border-zinc-800 p-3 bg-zinc-950/50 select-none">
+      <div class="flex items-center space-x-2 w-full max-w-lg">
+        <IconTerminal size={14} class="text-indigo-400 shrink-0" />
+        <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500 shrink-0">
+          TESTAR ROTA:
+        </span>
+        <input 
+          type="text" 
+          bind:value={routeName} 
+          placeholder="Ex: Criar Usuário (clique para editar)"
+          class="flex-1 bg-transparent border-b border-transparent hover:border-zinc-700 focus:border-indigo-500 focus:bg-zinc-900/50 focus:outline-none text-zinc-100 text-xs font-bold px-1.5 py-1 transition-all"
+        />
       </div>
       <button
         onclick={closeModal}
@@ -377,22 +415,42 @@
 
     <!-- Modal Footer -->
     <div class="flex items-center justify-between pt-3 border-t border-zinc-800 select-none">
-      <span class="text-[10px] text-zinc-500">
-        Dica: Use <span class="font-mono text-indigo-400 font-bold">{`{{token}}`}</span> ou <span class="font-mono text-indigo-400 font-bold">{`{{id}}`}</span> para dados dinâmicos.
-      </span>
+      <div class="text-[10px] text-zinc-500 flex-1 truncate pr-4">
+        Dica: Use <code class="text-indigo-400">{'{{token}}'}</code> ou <code class="text-indigo-400">{'{{id}}'}</code> para dados dinâmicos.
+      </div>
 
-      <div class="flex items-center space-x-2">
+      <div class="flex items-center space-x-2 shrink-0">
+        {#if template}
+          <button
+            onclick={handleDeleteRoute}
+            class="text-xs px-3 py-1.5 rounded hover:bg-rose-500/10 text-rose-400/80 hover:text-rose-400 transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap"
+            title="Deletar esta rota da Coleção"
+          >
+            <IconTrash size={11} />
+            <span>Excluir</span>
+          </button>
+        {/if}
+
         <button
           onclick={closeModal}
-          class="text-xs px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
+          class="text-xs px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer whitespace-nowrap"
         >
           Cancelar
         </button>
 
         <button
+          onclick={handleSaveRoute}
+          class="text-xs px-4 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700 transition-all shadow-sm flex items-center space-x-1.5 cursor-pointer whitespace-nowrap"
+          title="Salvar esta rota na sua Coleção para uso futuro"
+        >
+          <IconBookmark size={11} class="text-zinc-400" />
+          <span>Salvar Rota</span>
+        </button>
+
+        <button
           onclick={sendReplay}
           disabled={isSending}
-          class="text-xs px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50"
+          class="text-xs px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
         >
           <IconPlay size={11} class="fill-current" />
           <span>{isSending ? 'Enviando...' : 'Executar Replay'}</span>

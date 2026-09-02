@@ -358,7 +358,7 @@
           </div>
           <div>
             <div class="font-medium text-zinc-400">Nenhum tráfego capturado</div>
-            <div class="text-[11px] text-zinc-600 mt-0.5">Envie requisições através do proxy na porta :8080.</div>
+            <div class="text-[11px] text-zinc-600 mt-0.5">Envie requisições através do proxy na porta :{relayState.config.listenPort}.</div>
           </div>
         </div>
       {/if}

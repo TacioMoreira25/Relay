@@ -12,6 +12,7 @@
 
   let formName = $state<string>("");
   let formDesc = $state<string>("");
+  let formPort = $state<number>(8080);
 
   $effect(() => {
     if (isOpen) {
@@ -19,9 +20,11 @@
         const p = relayState.projects.find(proj => proj.id === projectId);
         formName = p?.name || "";
         formDesc = p?.description || "";
+        formPort = p?.config.listenPort || 8080;
       } else {
         formName = "";
         formDesc = "";
+        formPort = 8080;
       }
     }
   });
@@ -30,9 +33,16 @@
     if (!formName.trim()) return;
 
     if (projectId) {
-      relayState.updateProject(projectId, formName, formDesc);
+      relayState.updateProject(projectId, formName, formDesc, formPort);
+      // Reinicia proxy se a porta mudar e ele for o projeto ativo
+      if (relayState.isProxyRunning && relayState.activeProjectId === projectId) {
+        try {
+          await invoke("stop_proxy");
+          await invoke("start_proxy", { config: relayState.config });
+        } catch (e) { console.error(e); }
+      }
     } else {
-      relayState.createProject(formName, formDesc);
+      relayState.createProject(formName, formDesc, formPort);
       try {
         await invoke("update_proxy_config", { config: relayState.config });
       } catch (e) {
@@ -44,6 +54,7 @@
     projectId = null;
     formName = "";
     formDesc = "";
+    formPort = 8080;
   }
 </script>
 
@@ -79,6 +90,18 @@
             placeholder="Ex: Rotas e mocks do ecossistema de pagamentos"
             bind:value={formDesc}
             class="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-indigo-500 text-xs font-sans"
+          />
+        </div>
+
+        <div>
+          <label class="block text-zinc-400 font-medium mb-1" for="projModalPort">Porta Local do Proxy (Padrão: 8080)</label>
+          <input
+            id="projModalPort"
+            type="number"
+            min="1024"
+            max="65535"
+            bind:value={formPort}
+            class="w-full bg-zinc-950 border border-zinc-800 rounded px-2.5 py-1.5 text-zinc-200 focus:outline-none focus:border-indigo-500 text-xs font-mono"
           />
         </div>
       </div>

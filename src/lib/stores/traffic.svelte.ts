@@ -74,6 +74,33 @@ function saveProjectsToStorage(projects: ProjectData[]): void {
   }
 }
 
+const STORAGE_EXCHANGES_KEY = "relay_exchanges_history";
+
+function loadExchangesFromStorage(): HttpExchange[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_EXCHANGES_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error("Falha ao carregar histórico:", e);
+  }
+  return [];
+}
+
+function saveExchangesToStorage(exchanges: HttpExchange[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    // Manter no máximo os últimos 100 itens para não estourar o LocalStorage
+    const limited = exchanges.slice(0, 100);
+    localStorage.setItem(STORAGE_EXCHANGES_KEY, JSON.stringify(limited));
+  } catch (e) {
+    console.error("Falha ao salvar histórico:", e);
+  }
+}
+
 class RelayState {
   projects = $state<ProjectData[]>(loadProjectsFromStorage());
   activeProjectId = $state<string>(
@@ -82,7 +109,7 @@ class RelayState {
       : "proj-default"
   );
 
-  exchanges = $state<HttpExchange[]>([]);
+  exchanges = $state<HttpExchange[]>(loadExchangesFromStorage());
   selectedExchange = $state<HttpExchange | null>(null);
   diffCompareExchange = $state<HttpExchange | null>(null);
 
@@ -151,7 +178,7 @@ class RelayState {
     }
   }
 
-  createProject(name: string, description?: string): string {
+  createProject(name: string, description?: string, listenPort?: number): string {
     const newId = `proj-${Date.now()}`;
     const newProj: ProjectData = {
       id: newId,
@@ -159,7 +186,7 @@ class RelayState {
       description: description?.trim() || "",
       createdAt: Date.now(),
       config: {
-        listenPort: 8080,
+        listenPort: listenPort && listenPort > 0 ? listenPort : 8080,
         targetHost: "127.0.0.1",
         targetPort: 3000,
         latencyMs: 0,
@@ -189,11 +216,17 @@ class RelayState {
     return newId;
   }
 
-  updateProject(id: string, name: string, description?: string): void {
+  updateProject(id: string, name: string, description?: string, listenPort?: number): void {
     const proj = this.projects.find(p => p.id === id);
     if (proj) {
       proj.name = name.trim();
       proj.description = description?.trim() || "";
+      if (listenPort && listenPort > 0) {
+        proj.config.listenPort = listenPort;
+        if (this.activeProjectId === id) {
+          this.config.listenPort = listenPort;
+        }
+      }
       saveProjectsToStorage(this.projects);
     }
   }
@@ -374,6 +407,26 @@ class RelayState {
     this.saveCurrentProject();
   }
 
+  saveTemplate(tpl: SavedRequestTemplate): void {
+    const idx = this.savedTemplates.findIndex(t => t.id === tpl.id);
+    if (idx >= 0) {
+      this.savedTemplates[idx] = tpl;
+      this.savedTemplates = [...this.savedTemplates]; // trigger reactivity
+    } else {
+      this.savedTemplates = [...this.savedTemplates, tpl];
+    }
+    this.saveCurrentProject();
+  }
+
+  deleteTemplate(id: string): void {
+    const idx = this.savedTemplates.findIndex(t => t.id === id);
+    if (idx >= 0) {
+      this.savedTemplates.splice(idx, 1);
+      this.savedTemplates = [...this.savedTemplates]; // trigger reactivity
+      this.saveCurrentProject();
+    }
+  }
+
   clearTemplates(): void {
     this.savedTemplates = [];
     this.selectedTemplate = null;
@@ -385,6 +438,7 @@ class RelayState {
     if (!this.selectedExchange) {
       this.selectedExchange = exchange;
     }
+    saveExchangesToStorage(this.exchanges);
   }
 
   updateResponse(requestId: string, response: HttpExchange["response"]): void {
@@ -395,6 +449,7 @@ class RelayState {
       if (response?.body) {
         this.extractVariablesFromResponse(response.body);
       }
+      saveExchangesToStorage(this.exchanges);
     }
   }
 
@@ -403,6 +458,7 @@ class RelayState {
     if (item) {
       item.status = "failed";
       item.error = errorMsg;
+      saveExchangesToStorage(this.exchanges);
     }
   }
 
@@ -416,6 +472,7 @@ class RelayState {
     this.selectedExchange = null;
     this.diffCompareExchange = null;
     this.inspectorTab = "request";
+    saveExchangesToStorage(this.exchanges);
   }
 
   addJwt(jwt: ExtractedJwt): void {

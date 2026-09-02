@@ -232,7 +232,7 @@
       >
         {#if relayState.isProxyRunning}
           <IconSquare size={12} class="fill-current" />
-          <span>Ativo (:8080)</span>
+          <span>Ativo (:{relayState.config.listenPort})</span>
         {:else}
           <IconPlay size={12} class="fill-current" />
           <span>Iniciar Proxy</span>
