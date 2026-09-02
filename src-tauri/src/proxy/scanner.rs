@@ -14,7 +14,7 @@ pub struct DiscoveredTarget {
     pub source: String, // "auto_discovered", "manual", "remote"
 }
 
-/// Formata a identificação do serviço de forma 100% genérica e neutra
+/// Formata a identificação do serviço de forma limpa e neutra
 fn format_target_label(_host: &str, port: u16) -> String {
     format!("Localhost :{}", port)
 }
@@ -32,12 +32,11 @@ async fn probe_port(host: &str, port: u16, listen_port: u16) -> bool {
     }
 }
 
-/// Realiza a varredura concorrente de portas locais de desenvolvimento comuns excluindo a própria porta do proxy
+/// Realiza a varredura concorrente e RETORNA APENAS PORTAS QUE ESTÃO REALMENTE ATIVAS (is_active == true)
 pub async fn scan_local_targets_with_listen_port(listen_port: u16) -> Vec<DiscoveredTarget> {
-    // Faixa ampla de portas dev (3000-3010, 4000, 4200, 5000, 5173-5175, 8000, 8081-8085)
     let dev_ports: &[u16] = &[
         3000, 3001, 3002, 3003, 3004, 3005,
-        4000, 4200,
+        4000, 4200, 4201, 4202,
         5000, 5173, 5174, 5175,
         8000, 8001, 8081, 8082, 8083, 8084, 8085,
     ];
@@ -47,26 +46,30 @@ pub async fn scan_local_targets_with_listen_port(listen_port: u16) -> Vec<Discov
         let lp = listen_port;
         tasks.push(tokio::spawn(async move {
             let is_active = probe_port("127.0.0.1", port, lp).await;
-            DiscoveredTarget {
-                id: format!("auto-127.0.0.1-{}", port),
-                label: format_target_label("127.0.0.1", port),
-                host: "127.0.0.1".to_string(),
-                port,
-                is_active,
-                source: "auto_discovered".to_string(),
+            if is_active {
+                Some(DiscoveredTarget {
+                    id: format!("auto-127.0.0.1-{}", port),
+                    label: format_target_label("127.0.0.1", port),
+                    host: "127.0.0.1".to_string(),
+                    port,
+                    is_active: true,
+                    source: "auto_discovered".to_string(),
+                })
+            } else {
+                None
             }
         }));
     }
 
     let mut results = Vec::new();
     for task in tasks {
-        if let Ok(target) = task.await {
+        if let Ok(Some(target)) = task.await {
             results.push(target);
         }
     }
 
-    // Ordena colocando as portas ativas no topo
-    results.sort_by(|a, b| b.is_active.cmp(&a.is_active).then_with(|| a.port.cmp(&b.port)));
+    // Ordena as portas ativas por número de porta
+    results.sort_by(|a, b| a.port.cmp(&b.port));
     results
 }
 

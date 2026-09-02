@@ -51,6 +51,7 @@ export interface RouteRule {
   targetHost?: string;
   targetPort: number;
   latencyMs?: number;
+  stripPrefix?: boolean;
   isMock?: boolean;
   mockStatusCode?: number;
   mockBody?: string;

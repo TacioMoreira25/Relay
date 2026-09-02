@@ -1,13 +1,42 @@
-import type { HttpExchange, ExtractedJwt, ProxyConfig, RouteRule, SavedRequestTemplate, TargetEnvironment, DiscoveredTarget, RelayProject } from "$lib/types";
+import type {
+  ExtractedJwt,
+  HttpExchange,
+  ProxyConfig,
+  SavedRequestTemplate,
+  TargetEnvironment,
+  DiscoveredTarget,
+} from "$lib/types";
 
-const SAVED_PROJECTS_STORAGE_KEY = "relay_saved_projects_v1";
-const ACTIVE_PROJECT_ID_KEY = "relay_active_project_id_v1";
+export interface ProjectData {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: number;
+  config: ProxyConfig;
+  savedTemplates: SavedRequestTemplate[];
+  savedEnvironments: TargetEnvironment[];
+}
 
-function createDefaultProject(): RelayProject {
-  return {
+const STORAGE_PROJECTS_KEY = "relay_projects_data";
+const STORAGE_ACTIVE_PROJECT_KEY = "relay_active_project_id";
+
+function loadProjectsFromStorage(): ProjectData[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_PROJECTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.error("Falha ao carregar projetos do LocalStorage:", e);
+  }
+
+  const defaultProj: ProjectData = {
     id: "proj-default",
     name: "Projeto Padrão",
-    description: "Espaço de trabalho padrão do Relay",
+    description: "Ambiente padrão de monitoramento e testes",
+    createdAt: Date.now(),
     config: {
       listenPort: 8080,
       targetHost: "127.0.0.1",
@@ -20,92 +49,64 @@ function createDefaultProject(): RelayProject {
       routes: [],
     },
     savedTemplates: [],
-    savedEnvironments: [],
-    createdAt: Date.now(),
+    savedEnvironments: [
+      {
+        id: "env-local-3000",
+        name: "Localhost :3000",
+        host: "127.0.0.1",
+        port: 3000,
+        isHttps: false,
+        isActive: true,
+        type: "saved",
+      },
+    ],
   };
+
+  return [defaultProj];
 }
 
-function loadProjectsFromStorage(): RelayProject[] {
+function saveProjectsToStorage(projects: ProjectData[]): void {
+  if (typeof window === "undefined") return;
   try {
-    const raw = localStorage.getItem(SAVED_PROJECTS_STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
+    localStorage.setItem(STORAGE_PROJECTS_KEY, JSON.stringify(projects));
   } catch (e) {
-    // Ignora
-  }
-  return [createDefaultProject()];
-}
-
-function loadActiveProjectId(projects: RelayProject[]): string {
-  try {
-    const activeId = localStorage.getItem(ACTIVE_PROJECT_ID_KEY);
-    if (activeId && projects.some(p => p.id === activeId)) {
-      return activeId;
-    }
-  } catch (e) {
-    // Ignora
-  }
-  return projects[0].id;
-}
-
-function saveProjectsToStorage(projects: RelayProject[]): void {
-  try {
-    localStorage.setItem(SAVED_PROJECTS_STORAGE_KEY, JSON.stringify(projects));
-  } catch (e) {
-    console.warn("Falha ao persistir projetos no storage:", e);
+    console.error("Falha ao salvar projetos:", e);
   }
 }
 
 class RelayState {
+  projects = $state<ProjectData[]>(loadProjectsFromStorage());
+  activeProjectId = $state<string>(
+    typeof window !== "undefined"
+      ? localStorage.getItem(STORAGE_ACTIVE_PROJECT_KEY) || "proj-default"
+      : "proj-default"
+  );
+
   exchanges = $state<HttpExchange[]>([]);
   selectedExchange = $state<HttpExchange | null>(null);
-  
-  // Comparação Diff entre 2 requisições
   diffCompareExchange = $state<HttpExchange | null>(null);
 
-  // Sistema de Multi-Projetos
-  projects = $state<RelayProject[]>(loadProjectsFromStorage());
-  activeProjectId = $state<string>(loadActiveProjectId(this.projects));
-
-  activeProject = $derived.by(() => {
-    return this.projects.find(p => p.id === this.activeProjectId) || this.projects[0];
-  });
-
-  // Coleção de Requisições Salvas / Templates (vinculado ao projeto ativo)
   savedTemplates = $state<SavedRequestTemplate[]>([]);
   selectedTemplate = $state<SavedRequestTemplate | null>(null);
 
-  // Navegação Lateral: "collection" (Padrão) vs "history" (Tráfego Real)
   sidebarTab = $state<"history" | "collection">("collection");
+  inspectorTab = $state<"request" | "response" | "diff" | "curl">("request");
 
-  // Ambientes Salvos (vinculado ao projeto ativo)
   savedEnvironments = $state<TargetEnvironment[]>([]);
-  
-  // Alvos Descobertos por Varredura Local de Portas
   discoveredTargets = $state<DiscoveredTarget[]>([]);
   isScanningTargets = $state<boolean>(false);
-
-  // Ambiente Atualmente Ativo
   activeTarget = $state<TargetEnvironment | null>(null);
 
-  // Variáveis capturadas dinamicamente das respostas (ex: id de customer, token, etc.)
   extractedVariables = $state<Record<string, string>>({});
-
   jwts = $state<ExtractedJwt[]>([]);
   selectedJwt = $state<ExtractedJwt | null>(null);
   isProxyRunning = $state<boolean>(false);
   activeView = $state<"traffic" | "jwt">("traffic");
   
-  // Filtros de Tráfego
   searchQuery = $state<string>("");
   methodFilter = $state<string>("ALL");
   statusFilter = $state<string>("ALL");
 
-  // Configuração do Proxy
   config = $state<ProxyConfig>({
     listenPort: 8080,
     targetHost: "127.0.0.1",
@@ -119,48 +120,44 @@ class RelayState {
   });
 
   constructor() {
-    this.syncCurrentProjectState();
+    this.loadActiveProject();
   }
 
-  syncCurrentProjectState(): void {
-    const current = this.activeProject;
-    if (current) {
-      this.config = { ...current.config, routes: current.config.routes ? [...current.config.routes] : [] };
-      this.savedTemplates = current.savedTemplates ? [...current.savedTemplates] : [];
-      this.savedEnvironments = current.savedEnvironments ? [...current.savedEnvironments] : [];
-      this.activeTarget = null;
+  activeProject = $derived.by((): ProjectData => {
+    return this.projects.find((p) => p.id === this.activeProjectId) || this.projects[0];
+  });
+
+  loadActiveProject(): void {
+    const proj = this.projects.find((p) => p.id === this.activeProjectId) || this.projects[0];
+    if (proj) {
+      this.activeProjectId = proj.id;
+      this.config = { ...proj.config };
+      this.savedTemplates = proj.savedTemplates ? [...proj.savedTemplates] : [];
+      this.savedEnvironments = proj.savedEnvironments ? [...proj.savedEnvironments] : [];
+      this.activeTarget = this.savedEnvironments.find((e) => e.isActive) || this.savedEnvironments[0] || null;
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_ACTIVE_PROJECT_KEY, proj.id);
+      }
     }
   }
 
   saveCurrentProject(): void {
-    const idx = this.projects.findIndex(p => p.id === this.activeProjectId);
+    const idx = this.projects.findIndex((p) => p.id === this.activeProjectId);
     if (idx >= 0) {
-      this.projects[idx] = {
-        ...this.projects[idx],
-        config: { ...this.config },
-        savedTemplates: [...this.savedTemplates],
-        savedEnvironments: [...this.savedEnvironments],
-      };
+      this.projects[idx].config = { ...this.config };
+      this.projects[idx].savedTemplates = [...this.savedTemplates];
+      this.projects[idx].savedEnvironments = [...this.savedEnvironments];
       saveProjectsToStorage(this.projects);
     }
   }
 
-  // Ações de Projetos
-  switchProject(projectId: string): void {
-    if (projectId === this.activeProjectId) return;
-    this.saveCurrentProject();
-    this.activeProjectId = projectId;
-    localStorage.setItem(ACTIVE_PROJECT_ID_KEY, projectId);
-    this.syncCurrentProjectState();
-    this.clear();
-  }
-
-  createProject(name: string, description?: string): void {
-    this.saveCurrentProject();
-    const newProj: RelayProject = {
-      id: `proj-${Date.now()}`,
+  createProject(name: string, description?: string): string {
+    const newId = `proj-${Date.now()}`;
+    const newProj: ProjectData = {
+      id: newId,
       name: name.trim() || "Novo Projeto",
-      description: description?.trim(),
+      description: description?.trim() || "",
+      createdAt: Date.now(),
       config: {
         listenPort: 8080,
         targetHost: "127.0.0.1",
@@ -173,36 +170,52 @@ class RelayState {
         routes: [],
       },
       savedTemplates: [],
-      savedEnvironments: [],
-      createdAt: Date.now(),
+      savedEnvironments: [
+        {
+          id: `env-${Date.now()}`,
+          name: "Localhost :3000",
+          host: "127.0.0.1",
+          port: 3000,
+          isHttps: false,
+          isActive: true,
+          type: "saved",
+        },
+      ],
     };
+
     this.projects = [...this.projects, newProj];
-    this.activeProjectId = newProj.id;
     saveProjectsToStorage(this.projects);
-    localStorage.setItem(ACTIVE_PROJECT_ID_KEY, newProj.id);
-    this.syncCurrentProjectState();
-    this.clear();
+    this.switchProject(newId);
+    return newId;
   }
 
   updateProject(id: string, name: string, description?: string): void {
-    this.projects = this.projects.map(p => p.id === id ? { ...p, name: name.trim(), description: description?.trim() } : p);
-    saveProjectsToStorage(this.projects);
+    const proj = this.projects.find(p => p.id === id);
+    if (proj) {
+      proj.name = name.trim();
+      proj.description = description?.trim() || "";
+      saveProjectsToStorage(this.projects);
+    }
+  }
+
+  switchProject(id: string): void {
+    this.saveCurrentProject();
+    this.activeProjectId = id;
+    this.loadActiveProject();
+    this.clear();
   }
 
   deleteProject(id: string): void {
     if (this.projects.length <= 1) return;
-    const remaining = this.projects.filter(p => p.id !== id);
-    this.projects = remaining;
+    this.projects = this.projects.filter((p) => p.id !== id);
     if (this.activeProjectId === id) {
-      this.activeProjectId = remaining[0].id;
-      localStorage.setItem(ACTIVE_PROJECT_ID_KEY, remaining[0].id);
-      this.syncCurrentProjectState();
+      this.activeProjectId = this.projects[0].id;
+      this.loadActiveProject();
       this.clear();
     }
     saveProjectsToStorage(this.projects);
   }
 
-  // Derived - Variáveis Ativas
   activeVariables = $derived.by((): Record<string, string> => {
     return {
       baseUrl: `http://${this.config.targetHost}:${this.config.targetPort}`,
@@ -210,7 +223,6 @@ class RelayState {
     };
   });
 
-  // Derived - Estatísticas
   totalRequests = $derived(this.exchanges.length);
   totalTemplates = $derived(this.savedTemplates.length);
   failedRequests = $derived(
@@ -218,7 +230,6 @@ class RelayState {
   );
   totalJwts = $derived(this.jwts.length);
 
-  // Derived - Lista Filtrada do Histórico
   filteredExchanges = $derived(
     this.exchanges.filter(e => {
       if (this.methodFilter !== "ALL" && e.request.method.toUpperCase() !== this.methodFilter) {
@@ -252,7 +263,6 @@ class RelayState {
     })
   );
 
-  // Derived - Templates Filtrados
   filteredTemplates = $derived(
     this.savedTemplates.filter(t => {
       if (this.methodFilter !== "ALL" && t.method.toUpperCase() !== this.methodFilter) {
@@ -271,7 +281,6 @@ class RelayState {
     })
   );
 
-  // Helper para substituir variáveis {{varName}} no texto
   replaceVariables(text: string): string {
     let result = text;
     const vars = this.activeVariables;
@@ -282,7 +291,6 @@ class RelayState {
     return result;
   }
 
-  // Auto-Captura de Campos em Respostas JSON (id, customerId, accountId, token, etc.)
   extractVariablesFromResponse(bodyStr?: string): void {
     if (!bodyStr || !bodyStr.trim()) return;
     try {
@@ -321,7 +329,6 @@ class RelayState {
     }
   }
 
-  // Persistência de Ambientes
   addSavedEnvironment(env: TargetEnvironment): void {
     this.savedEnvironments = [...this.savedEnvironments, env];
     this.saveCurrentProject();
@@ -352,13 +359,11 @@ class RelayState {
     }
   }
 
-  // Persistência de Configuração do Proxy
   updateConfig(newConfig: ProxyConfig): void {
     this.config = newConfig;
     this.saveCurrentProject();
   }
 
-  // Persistência de Templates / Coleções
   setTemplates(templates: SavedRequestTemplate[]): void {
     this.savedTemplates = templates;
     this.saveCurrentProject();
@@ -375,9 +380,11 @@ class RelayState {
     this.saveCurrentProject();
   }
 
-  // Actions - Requisições
   addExchange(exchange: HttpExchange): void {
     this.exchanges = [exchange, ...this.exchanges];
+    if (!this.selectedExchange) {
+      this.selectedExchange = exchange;
+    }
   }
 
   updateResponse(requestId: string, response: HttpExchange["response"]): void {
@@ -401,15 +408,16 @@ class RelayState {
 
   select(exchange: HttpExchange | null): void {
     this.selectedExchange = exchange;
+    this.inspectorTab = "request";
   }
 
   clear(): void {
     this.exchanges = [];
     this.selectedExchange = null;
     this.diffCompareExchange = null;
+    this.inspectorTab = "request";
   }
 
-  // Actions - JWTs
   addJwt(jwt: ExtractedJwt): void {
     const existingIndex = this.jwts.findIndex(j => j.token === jwt.token);
     if (existingIndex >= 0) {
@@ -431,17 +439,6 @@ class RelayState {
   clearJwts(): void {
     this.jwts = [];
     this.selectedJwt = null;
-  }
-
-  // Actions - Rotas
-  addRoute(route: RouteRule): void {
-    this.config.routes.push(route);
-    this.saveCurrentProject();
-  }
-
-  removeRoute(index: number): void {
-    this.config.routes.splice(index, 1);
-    this.saveCurrentProject();
   }
 }
 

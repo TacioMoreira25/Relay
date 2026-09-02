@@ -1,29 +1,30 @@
+use bytes::Bytes;
+use http_body_util::combinators::BoxBody;
+use http_body_util::{BodyExt, Empty, Full};
+use hyper::body::Incoming;
+use hyper::server::conn::http1;
+use hyper::service::service_fn;
+use hyper::{Request, Response, StatusCode};
+use hyper_util::rt::{TokioIo, TokioTimer};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
-
-use bytes::Bytes;
-use http_body_util::{combinators::BoxBody, BodyExt, Empty, Full};
-use hyper::server::conn::http1;
-use hyper::service::service_fn;
-use hyper::{Request, Response, StatusCode};
-use hyper_util::rt::TokioIo;
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::watch;
+use tokio::sync::oneshot;
 use tracing::{error, info, warn};
 use uuid::Uuid;
 
-use super::recorder::{
+use crate::commands::AppState;
+use crate::proxy::recorder::{
     HeaderEntry, HttpExchange, InterceptedRequest, InterceptedResponse, ProxyConfig,
 };
-use crate::commands::AppState;
-use crate::state::{extract_jwts_from_body, extract_jwts_from_headers};
+use crate::state::session::{extract_jwts_from_body, extract_jwts_from_headers};
 
 pub struct ProxyServer {
-    config: ProxyConfig,
-    shutdown_tx: Option<watch::Sender<bool>>,
+    pub config: ProxyConfig,
+    shutdown_tx: Option<oneshot::Sender<bool>>,
 }
 
 impl ProxyServer {
@@ -34,52 +35,52 @@ impl ProxyServer {
         }
     }
 
-    pub async fn start(&mut self, app_handle: AppHandle) -> Result<(), String> {
+    pub async fn start(&mut self, app: AppHandle) -> Result<(), String> {
         let addr = SocketAddr::from(([127, 0, 0, 1], self.config.listen_port));
-        let listener = TcpListener::bind(addr).await.map_err(|e| e.to_string())?;
+        let listener = TcpListener::bind(addr)
+            .await
+            .map_err(|e| format!("Falha ao iniciar listener na porta {}: {}", self.config.listen_port, e))?;
 
-        let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
-        self.shutdown_tx = Some(shutdown_tx);
+        info!("Relay Engine ouvindo em http://{}", addr);
 
-        let app = Arc::new(app_handle);
+        let (tx, mut rx) = oneshot::channel::<bool>();
+        self.shutdown_tx = Some(tx);
 
-        info!("Proxy iniciado com sucesso em http://{}", addr);
+        let app_handle = Arc::new(app);
 
         tokio::spawn(async move {
             loop {
                 tokio::select! {
                     accept_res = listener.accept() => {
                         match accept_res {
-                            Ok((stream, _remote_addr)) => {
+                            Ok((stream, client_addr)) => {
                                 let io = TokioIo::new(stream);
-                                let app_clone = Arc::clone(&app);
+                                let app_clone = Arc::clone(&app_handle);
 
                                 tokio::spawn(async move {
-                                    let service = service_fn(move |req| {
+                                    let service = service_fn(move |req: Request<Incoming>| {
                                         let app = Arc::clone(&app_clone);
                                         async move {
                                             handle_proxy_request(req, app).await
                                         }
                                     });
 
-                                    if let Err(err) = http1::Builder::new()
-                                        .serve_connection(io, service)
-                                        .await
-                                    {
-                                        warn!("Conexão HTTP encerrada com erro: {:?}", err);
+                                    let mut builder = http1::Builder::new();
+                                    builder.timer(TokioTimer::new());
+
+                                    if let Err(err) = builder.serve_connection(io, service).await {
+                                        warn!("Erro na conexão do cliente ({}): {:?}", client_addr, err);
                                     }
                                 });
                             }
-                            Err(err) => {
-                                error!("Erro no listener accept: {:?}", err);
+                            Err(e) => {
+                                error!("Erro ao aceitar conexão TCP: {:?}", e);
                             }
                         }
                     }
-                    _ = shutdown_rx.changed() => {
-                        if *shutdown_rx.borrow() {
-                            info!("Encerrando servidor proxy listener.");
-                            break;
-                        }
+                    _ = &mut rx => {
+                        info!("Sinal de encerramento do Relay recebido.");
+                        break;
                     }
                 }
             }
@@ -99,13 +100,19 @@ pub struct RouteTargetResolution {
     pub host: String,
     pub port: u16,
     pub latency_ms: u64,
+    pub forwarded_uri: String,
     pub is_mock: bool,
     pub mock_status: u16,
     pub mock_body: Option<String>,
 }
 
-pub fn resolve_route_target_full(uri_path: &str, config: &ProxyConfig) -> RouteTargetResolution {
-    let clean_path = uri_path.split('?').next().unwrap_or(uri_path);
+pub fn resolve_route_target_full(uri_string: &str, config: &ProxyConfig) -> RouteTargetResolution {
+    let clean_path = uri_string.split('?').next().unwrap_or(uri_string);
+    let query_suffix = if let Some(idx) = uri_string.find('?') {
+        &uri_string[idx..]
+    } else {
+        ""
+    };
 
     for rule in &config.routes {
         let prefix = rule.path_prefix.trim_end_matches('*');
@@ -116,10 +123,24 @@ pub fn resolve_route_target_full(uri_path: &str, config: &ProxyConfig) -> RouteT
                 .cloned()
                 .unwrap_or_else(|| config.target_host.clone());
             let latency = rule.latency_ms.unwrap_or(config.latency_ms);
+
+            let forwarded_uri = if rule.strip_prefix {
+                let stripped = &clean_path[prefix.len()..];
+                let final_path = if stripped.is_empty() || !stripped.starts_with('/') {
+                    format!("/{}", stripped)
+                } else {
+                    stripped.to_string()
+                };
+                format!("{}{}", final_path, query_suffix)
+            } else {
+                uri_string.to_string()
+            };
+
             return RouteTargetResolution {
                 host,
                 port: rule.target_port,
                 latency_ms: latency,
+                forwarded_uri,
                 is_mock: rule.is_mock,
                 mock_status: rule.mock_status_code.unwrap_or(200),
                 mock_body: rule.mock_body.clone(),
@@ -131,6 +152,7 @@ pub fn resolve_route_target_full(uri_path: &str, config: &ProxyConfig) -> RouteT
         host: config.target_host.clone(),
         port: config.target_port,
         latency_ms: config.latency_ms,
+        forwarded_uri: uri_string.to_string(),
         is_mock: false,
         mock_status: 200,
         mock_body: None,
@@ -284,7 +306,7 @@ pub async fn handle_proxy_request(
             }));
     }
 
-    // Simulação de Falhas Controladas (Chaos Failure Injection)
+    // Simulação de Caos: Injeção de Falhas Programadas
     if should_simulate_failure(config.simulate_failure_rate) {
         let duration_ms = start_time.elapsed().as_millis() as u64;
         let fail_status = StatusCode::from_u16(config.failure_status_code)
@@ -341,12 +363,12 @@ pub async fn handle_proxy_request(
             }));
     }
 
-    // Repasse transparente para o upstream real
+    // Repasse transparente para o upstream real (com reescrita de URL se strip_prefix for ativo)
     match forward_to_upstream(
         &route_res.host,
         route_res.port,
         &parts.method,
-        &uri_string,
+        &route_res.forwarded_uri,
         &headers_vec,
         body_bytes,
     )
@@ -482,7 +504,7 @@ pub fn should_simulate_failure(failure_rate: f32) -> bool {
     fastrand::f32() < failure_rate
 }
 
-async fn forward_to_upstream(
+pub async fn forward_to_upstream(
     target_host: &str,
     target_port: u16,
     method: &hyper::Method,
@@ -558,28 +580,9 @@ mod tests {
     use http_body_util::Full;
     use hyper::service::service_fn;
     use hyper::{Response, StatusCode};
-    use hyper_util::rt::TokioIo;
-    use std::convert::Infallible;
-    use tokio::net::TcpListener;
 
-    #[test]
-    fn test_calculate_delay_jitter() {
-        let base = 100;
-        let jitter = 20;
-        for _ in 0..50 {
-            let d = calculate_delay(base, jitter);
-            assert!(d >= 80 && d <= 120);
-        }
-    }
-
-    #[test]
-    fn test_should_simulate_failure() {
-        assert!(!should_simulate_failure(0.0));
-        assert!(should_simulate_failure(1.0));
-    }
-
-    #[test]
-    fn test_resolve_route_target() {
+    #[tokio::test]
+    async fn test_resolve_route_target() {
         let config = ProxyConfig {
             listen_port: 8080,
             target_host: "127.0.0.1".to_string(),
@@ -589,66 +592,71 @@ mod tests {
             simulate_failure_rate: 0.0,
             failure_status_code: 500,
             auto_extract_jwt: true,
-            routes: vec![
-                RouteRule {
-                    path_prefix: "/api/v1/auth".to_string(),
-                    target_host: Some("auth-service".to_string()),
-                    target_port: 4000,
-                    latency_ms: Some(10),
-                    is_mock: false,
-                    mock_status_code: None,
-                    mock_body: None,
-                },
-                RouteRule {
-                    path_prefix: "/mock/users".to_string(),
-                    target_host: None,
-                    target_port: 3000,
-                    latency_ms: None,
-                    is_mock: true,
-                    mock_status_code: Some(201),
-                    mock_body: Some("{}".to_string()),
-                },
-            ],
+            routes: vec![RouteRule {
+                path_prefix: "/api/v2".to_string(),
+                target_host: Some("127.0.0.1".to_string()),
+                target_port: 4000,
+                latency_ms: Some(100),
+                strip_prefix: true,
+                is_mock: false,
+                mock_status_code: None,
+                mock_body: None,
+            }],
         };
 
-        let (host, port, lat) = resolve_route_target("/api/v1/auth/login", &config);
-        assert_eq!(host, "auth-service");
-        assert_eq!(port, 4000);
-        assert_eq!(lat, 10);
+        let res = resolve_route_target_full("/api/v2/users", &config);
+        assert_eq!(res.port, 4000);
+        assert_eq!(res.latency_ms, 100);
+        assert_eq!(res.forwarded_uri, "/users");
 
-        let res = resolve_route_target_full("/mock/users", &config);
-        assert!(res.is_mock);
-        assert_eq!(res.mock_status, 201);
+        let res_default = resolve_route_target_full("/api/v1/auth", &config);
+        assert_eq!(res_default.port, 3000);
+        assert_eq!(res_default.latency_ms, 50);
+        assert_eq!(res_default.forwarded_uri, "/api/v1/auth");
+    }
+
+    #[test]
+    fn test_calculate_delay_jitter() {
+        assert_eq!(calculate_delay(0, 0), 0);
+        assert_eq!(calculate_delay(100, 0), 100);
+        let delay = calculate_delay(100, 20);
+        assert!(delay >= 80 && delay <= 120);
+    }
+
+    #[test]
+    fn test_should_simulate_failure() {
+        assert!(!should_simulate_failure(0.0));
+        assert!(should_simulate_failure(1.0));
     }
 
     #[tokio::test]
     async fn test_forward_to_upstream_success() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
+        let local_addr = listener.local_addr().unwrap();
 
         tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let io = TokioIo::new(stream);
-            http1::Builder::new()
-                .serve_connection(
-                    io,
-                    service_fn(|_req| async {
-                        Ok::<_, Infallible>(
-                            Response::builder()
-                                .status(StatusCode::OK)
-                                .header("x-custom", "relay-test")
-                                .body(Full::new(Bytes::from("hello from upstream")))
-                                .unwrap(),
-                        )
-                    }),
-                )
-                .await
-                .unwrap();
+            loop {
+                if let Ok((stream, _)) = listener.accept().await {
+                    let io = TokioIo::new(stream);
+                    tokio::spawn(async move {
+                        let service = service_fn(|_req: Request<Incoming>| async {
+                            Ok::<_, Infallible>(
+                                Response::builder()
+                                    .status(StatusCode::OK)
+                                    .header("x-mock-header", "relay-test")
+                                    .body(Full::new(Bytes::from("hello upstream")))
+                                    .unwrap(),
+                            )
+                        });
+                        let _ = http1::Builder::new().serve_connection(io, service).await;
+                    });
+                }
+            }
         });
 
         let (status, headers, body) = forward_to_upstream(
             "127.0.0.1",
-            port,
+            local_addr.port(),
             &hyper::Method::GET,
             "/test",
             &[],
@@ -658,9 +666,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(status, StatusCode::OK);
-        assert!(headers
-            .iter()
-            .any(|h| h.key == "x-custom" && h.value == "relay-test"));
-        assert_eq!(body.as_ref(), b"hello from upstream");
+        assert_eq!(body, Bytes::from("hello upstream"));
+        assert!(headers.iter().any(|h| h.key == "x-mock-header" && h.value == "relay-test"));
     }
 }

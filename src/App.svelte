@@ -1,7 +1,6 @@
 <script lang="ts">
   import RequestList from "$lib/components/RequestList.svelte";
   import Inspector from "$lib/components/Inspector.svelte";
-  import ProxyConfigModal from "$lib/components/ProxyConfigModal.svelte";
   import ExportModal from "$lib/components/ExportModal.svelte";
   import TipsModal from "$lib/components/TipsModal.svelte";
   import ReplayModal from "$lib/components/ReplayModal.svelte";
@@ -9,11 +8,11 @@
   import JwtManager from "$lib/components/JwtManager.svelte";
   import EnvironmentSelector from "$lib/components/EnvironmentSelector.svelte";
   import ProjectSelector from "$lib/components/ProjectSelector.svelte";
+  import ChaosPopover from "$lib/components/ChaosPopover.svelte";
   import Logo from "$lib/components/Logo.svelte";
   import {
     IconActivity,
     IconShield,
-    IconSettings,
     IconDownload,
     IconPlay,
     IconSquare,
@@ -26,7 +25,6 @@
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
 
-  let isConfigOpen = $state(false);
   let isExportOpen = $state(false);
   let isTipsOpen = $state(false);
   let isNewRequestOpen = $state(false);
@@ -54,7 +52,6 @@
 
   async function syncInitialState(): Promise<void> {
     try {
-      // Sincroniza a configuração salva do projeto ativo para o backend Rust
       if (relayState.config) {
         await invoke("update_proxy_config", { config: relayState.config });
       }
@@ -69,7 +66,7 @@
         relayState.jwts = tokens;
       }
     } catch (e) {
-      console.warn("Falha ao sincronizar dados iniciais:", e);
+      console.error("Erro na inicialização:", e);
     }
   }
 
@@ -83,88 +80,92 @@
         relayState.isProxyRunning = true;
       }
     } catch (err) {
-      console.error("Erro ao alterar estado do proxy:", err);
-    }
-  }
-
-  function handleKeyDown(event: KeyboardEvent): void {
-    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
-      event.preventDefault();
-      const searchInput = document.querySelector<HTMLInputElement>('input[type="text"]');
-      searchInput?.focus();
-    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "l") {
-      event.preventDefault();
-      invoke("clear_exchanges");
-      relayState.clear();
-    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
-      event.preventDefault();
-      toggleProxy();
-    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "e") {
-      event.preventDefault();
-      isExportOpen = true;
-    } else if ((event.ctrlKey || event.metaKey) && (event.key === "/" || event.key === "?")) {
-      event.preventDefault();
-      isTipsOpen = true;
-    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
-      event.preventDefault();
-      activeTestingTemplate = null;
-      isNewRequestOpen = true;
+      console.error("Erro ao alternar proxy:", err);
     }
   }
 
   onMount(() => {
-    let unlistenReq: UnlistenFn | undefined;
-    let unlistenRes: UnlistenFn | undefined;
-    let unlistenErr: UnlistenFn | undefined;
-    let unlistenJwt: UnlistenFn | undefined;
-
     syncInitialState();
-    window.addEventListener("keydown", handleKeyDown);
+
+    let unlistenReq: UnlistenFn;
+    let unlistenRes: UnlistenFn;
+    let unlistenErr: UnlistenFn;
+    let unlistenJwt: UnlistenFn;
 
     listen<HttpExchange>("relay:request", (event) => {
       relayState.addExchange(event.payload);
-    }).then((fn) => (unlistenReq = fn));
+    }).then((unlisten) => (unlistenReq = unlisten));
 
     listen<InterceptedResponse>("relay:response", (event) => {
       relayState.updateResponse(event.payload.requestId, event.payload);
-    }).then((fn) => (unlistenRes = fn));
+    }).then((unlisten) => (unlistenRes = unlisten));
 
     listen<{ requestId: string; error: string }>("relay:error", (event) => {
       relayState.setError(event.payload.requestId, event.payload.error);
-    }).then((fn) => (unlistenErr = fn));
+    }).then((unlisten) => (unlistenErr = unlisten));
 
     listen<ExtractedJwt>("relay:jwt", (event) => {
       relayState.addJwt(event.payload);
-    }).then((fn) => (unlistenJwt = fn));
+    }).then((unlisten) => (unlistenJwt = unlisten));
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey) {
+        if (e.key === "p" || e.key === "P") {
+          e.preventDefault();
+          toggleProxy();
+        } else if (e.key === "l" || e.key === "L") {
+          e.preventDefault();
+          invoke("clear_exchanges").then(() => relayState.clear());
+        } else if (e.key === "e" || e.key === "E") {
+          e.preventDefault();
+          isExportOpen = true;
+        } else if (e.key === "n" || e.key === "N") {
+          e.preventDefault();
+          activeTestingTemplate = null;
+          isNewRequestOpen = true;
+        } else if (e.key === "/") {
+          e.preventDefault();
+          isTipsOpen = true;
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
 
     return () => {
-      window.removeEventListener("keydown", handleKeyDown);
       unlistenReq?.();
       unlistenRes?.();
       unlistenErr?.();
       unlistenJwt?.();
+      window.removeEventListener("keydown", handleKeyDown);
     };
   });
 </script>
 
-<main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-200 font-sans select-none antialiased relative">
-  <!-- Minimalist Clean TopBar -->
-  <header class="relative z-30 h-12 border-b border-zinc-800/80 bg-zinc-900/70 backdrop-blur-md px-4 flex items-center justify-between">
-    <!-- Brand, Projects, Views & Smart Environment Dropdown -->
+<main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 font-sans antialiased overflow-hidden select-none">
+  <!-- TopBar Minimalista e Focada -->
+  <header class="h-12 border-b border-zinc-800 bg-zinc-950 px-4 flex items-center justify-between shrink-0">
+    <!-- Brand & Project Switcher -->
     <div class="flex items-center space-x-3">
-      <!-- Novo Logo SVG Vetorial -->
       <Logo />
 
-      <!-- Seletor de Projetos -->
-      <ProjectSelector onOpenCreate={handleOpenCreateProject} onOpenEdit={handleOpenEditProject} />
+      <div class="h-4 w-[1px] bg-zinc-800"></div>
 
-      <!-- Segmented View Tabs -->
-      <nav class="flex items-center space-x-1 bg-zinc-950/80 p-0.5 rounded-lg border border-zinc-800/80 text-xs">
+      <!-- Seletor de Projetos -->
+      <ProjectSelector
+        onOpenCreate={handleOpenCreateProject}
+        onOpenEdit={handleOpenEditProject}
+      />
+    </div>
+
+    <!-- Navigation Tabs & Target Selector -->
+    <div class="flex items-center space-x-3">
+      <nav class="flex items-center space-x-1 bg-zinc-900/80 p-0.5 rounded-lg border border-zinc-800 text-xs">
         <button
           onclick={() => (relayState.activeView = "traffic")}
           class="px-3 py-1 rounded-md transition-all flex items-center space-x-1.5 {relayState.activeView === 'traffic' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
         >
-          <IconActivity size={13} />
+          <IconActivity size={13} class="text-indigo-400" />
           <span>Tráfego</span>
           {#if relayState.totalRequests > 0}
             <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-700/80 text-zinc-300 font-mono">
@@ -187,12 +188,15 @@
         </button>
       </nav>
 
-      <!-- Dropdown Inteligente de Ambientes e Auto-Descoberta de Portas -->
+      <!-- Seletor de Porta Alvo (Backend Target) -->
       <EnvironmentSelector />
     </div>
 
     <!-- Actions & Controls -->
     <div class="flex items-center space-x-2">
+      <!-- Simulador de Caos & Falhas (Acesso Rápido em 1 Clique) -->
+      <ChaosPopover />
+
       <!-- Nova Requisição Direta -->
       <button
         onclick={() => { activeTestingTemplate = null; isNewRequestOpen = true; }}
@@ -203,20 +207,7 @@
         <span class="text-[11px] font-medium">Nova Requisição</span>
       </button>
 
-      <!-- Sutil Badge de Roteamento -->
-      <button
-        onclick={() => (isConfigOpen = true)}
-        class="flex items-center space-x-1.5 text-[11px] font-mono text-zinc-400 hover:text-zinc-200 px-2 py-1 rounded-md hover:bg-zinc-800/60 transition-colors cursor-pointer"
-        title="Configurações de portas, rotas, mocks e chaos simulator"
-      >
-        <IconSettings size={13} class="text-zinc-500" />
-        <span>:{relayState.config.listenPort} → {relayState.config.targetHost}:{relayState.config.targetPort}</span>
-        {#if relayState.config.routes.some(r => r.isMock)}
-          <span class="text-[9px] px-1 py-0.2 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 font-sans">Mock</span>
-        {/if}
-      </button>
-
-      <!-- Ações Secundárias (Icon Only com Tooltip) -->
+      <!-- Ações Secundárias -->
       <button
         onclick={() => (isExportOpen = true)}
         class="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
@@ -233,7 +224,7 @@
         <IconHelpCircle size={14} />
       </button>
 
-      <!-- Botão Iniciar com Destaque Total -->
+      <!-- Botão Iniciar Proxy -->
       <button
         onclick={toggleProxy}
         class="text-xs px-3.5 py-1.5 rounded-md font-medium flex items-center space-x-1.5 transition-all shadow-md cursor-pointer {relayState.isProxyRunning ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold shadow-[0_0_12px_rgba(16,185,129,0.4)]' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}"
@@ -268,9 +259,8 @@
     {/if}
   </div>
 
-  <!-- Modals Renderizados na Raiz do App (Sem sobreposição/cortes de header) -->
+  <!-- Modals Renderizados na Raiz do App -->
   <ProjectModal bind:isOpen={isProjectModalOpen} bind:projectId={selectedProjectIdToEdit} />
-  <ProxyConfigModal bind:isOpen={isConfigOpen} />
   <ExportModal bind:isOpen={isExportOpen} />
   <TipsModal bind:isOpen={isTipsOpen} />
   {#if isNewRequestOpen}
