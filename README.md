@@ -30,13 +30,48 @@ Construido com arquitetura nativa em **Rust (Tokio + Hyper)** e **Tauri v2 com S
 
 ---
 
-## Instalacao & Execucao em Producao
+## Pré-requisitos (Linux)
 
-Voce pode instalar e executar o Relay diretamente no seu sistema operacional Linux sem depender de terminal ou modo de desenvolvimento.
+Antes de compilar ou rodar o projeto, você precisa ter as dependências do **Node.js** e do **Rust/Tauri** instaladas no sistema.
 
-### Opcao 1: Instalar no Fedora / RHEL / AlmaLinux (.rpm)
+**1. Dependências do Sistema (Ubuntu / Debian / Mint):**
+```bash
+sudo apt update
+sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+**2. Compilador Rust:**
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+**3. Dependências do Node (Obrigatório antes do build):**
+```bash
+npm install
+```
+
+---
+
+## Compilação & Instalação
+
+Você pode compilar e instalar o Relay diretamente no seu sistema operacional Linux:
+
+### Opção 1: Instalar no Ubuntu / Debian / Mint (.deb)
 
 ```bash
+# Compila e gera o pacote Debian (Requer 'npm install' feito previamente)
+npm run tauri build -- --bundles deb
+
+# Instala no sistema
+sudo dpkg -i src-tauri/target/release/bundle/deb/relay_0.1.0_amd64.deb
+```
+
+### Opção 2: Instalar no Fedora / RHEL / AlmaLinux (.rpm)
+
+```bash
+# Dependências do sistema (Fedora):
+# sudo dnf install webkit2gtk4.1-devel curl wget file libappindicator-gtk3-devel librsvg2-devel gcc-c++
+
 # Compila e gera o pacote nativo RPM
 npm run tauri build -- --bundles rpm
 
@@ -44,23 +79,13 @@ npm run tauri build -- --bundles rpm
 sudo dnf install -y src-tauri/target/release/bundle/rpm/relay-0.1.0-1.x86_64.rpm
 ```
 
-### Opcao 2: Instalar no Ubuntu / Debian / Mint (.deb)
+### Opção 3: Executável Binário Direto (Portátil)
 
 ```bash
-# Compila e gera o pacote Debian
-npm run tauri build -- --bundles deb
-
-# Instala no sistema
-sudo dpkg -i src-tauri/target/release/bundle/deb/relay_0.1.0_amd64.deb
-```
-
-### Opcao 3: Executavel Binario Direto (Portatil)
-
-```bash
-# Compila o binario otimizado
+# Compila o binário otimizado
 npm run tauri build
 
-# Copia para os binarios locais do usuario
+# Copia para os binários locais do usuário
 mkdir -p ~/.local/bin
 cp src-tauri/target/release/relay ~/.local/bin/
 ```
