@@ -97,6 +97,8 @@ pub fn run() {
             commands::clear_session_jwts,
             commands::get_exchanges,
             commands::clear_exchanges,
+            commands::delete_exchange,
+            commands::delete_exchanges,
             commands::execute_replay,
             commands::create_ca_certificate,
             commands::export_har,

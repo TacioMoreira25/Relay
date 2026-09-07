@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import type {
   ExtractedJwt,
   HttpExchange,
@@ -19,6 +20,74 @@ export interface ProjectData {
 
 const STORAGE_PROJECTS_KEY = "relay_projects_data";
 const STORAGE_ACTIVE_PROJECT_KEY = "relay_active_project_id";
+const STORAGE_EXCHANGES_KEY = "relay_exchanges_history";
+const STORAGE_JWTS_KEY = "relay_saved_jwts";
+
+function loadJwtsFromStorage(): ExtractedJwt[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_JWTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error("Falha ao carregar JWTs do LocalStorage:", e);
+  }
+  return [];
+}
+
+function saveJwtsToStorage(jwts: ExtractedJwt[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const limited = jwts.slice(0, 50);
+    localStorage.setItem(STORAGE_JWTS_KEY, JSON.stringify(limited));
+  } catch (e) {
+    console.error("Falha ao salvar JWTs:", e);
+  }
+}
+
+export function parseJwtClientSide(tokenStr: string, source: string): ExtractedJwt | null {
+  try {
+    const clean = tokenStr.trim().replace(/^(Bearer|bearer|BEARER)\s+/i, "").replace(/["'`]/g, "").trim();
+    const parts = clean.split(".");
+    if (parts.length !== 3) return null;
+
+    let base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    while (base64.length % 4) {
+      base64 += "=";
+    }
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
+    );
+    const claims = JSON.parse(jsonPayload);
+
+    let header: Record<string, unknown> | undefined;
+    try {
+      let hB64 = parts[0].replace(/-/g, "+").replace(/_/g, "/");
+      while (hB64.length % 4) hB64 += "=";
+      header = JSON.parse(atob(hB64));
+    } catch {
+      // Ignora erro no header
+    }
+
+    return {
+      token: clean,
+      source,
+      detectedAt: Date.now(),
+      claims,
+      header,
+      subject: claims.sub ? String(claims.sub) : undefined,
+      issuer: claims.iss ? String(claims.iss) : undefined,
+      expiresAt: typeof claims.exp === "number" ? claims.exp : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
 
 function loadProjectsFromStorage(): ProjectData[] {
   if (typeof window === "undefined") return [];
@@ -51,7 +120,7 @@ function loadProjectsFromStorage(): ProjectData[] {
     savedTemplates: [],
     savedEnvironments: [
       {
-        id: "env-local-3000",
+        id: "env-default",
         name: "Localhost :3000",
         host: "127.0.0.1",
         port: 3000,
@@ -73,8 +142,6 @@ function saveProjectsToStorage(projects: ProjectData[]): void {
     console.error("Falha ao salvar projetos:", e);
   }
 }
-
-const STORAGE_EXCHANGES_KEY = "relay_exchanges_history";
 
 function loadExchangesFromStorage(): HttpExchange[] {
   if (typeof window === "undefined") return [];
@@ -117,7 +184,7 @@ class RelayState {
   selectedTemplate = $state<SavedRequestTemplate | null>(null);
 
   sidebarTab = $state<"history" | "collection">("collection");
-  inspectorTab = $state<"request" | "response" | "diff" | "curl">("request");
+  inspectorTab = $state<"request" | "response" | "diff" | "curl">("response");
 
   savedEnvironments = $state<TargetEnvironment[]>([]);
   discoveredTargets = $state<DiscoveredTarget[]>([]);
@@ -125,7 +192,7 @@ class RelayState {
   activeTarget = $state<TargetEnvironment | null>(null);
 
   extractedVariables = $state<Record<string, string>>({});
-  jwts = $state<ExtractedJwt[]>([]);
+  jwts = $state<ExtractedJwt[]>(loadJwtsFromStorage());
   selectedJwt = $state<ExtractedJwt | null>(null);
   isProxyRunning = $state<boolean>(false);
   activeView = $state<"traffic" | "jwt">("traffic");
@@ -133,6 +200,8 @@ class RelayState {
   searchQuery = $state<string>("");
   methodFilter = $state<string>("ALL");
   statusFilter = $state<string>("ALL");
+  historySourceFilter = $state<"ALL" | "MANUAL" | "AUTO">("ALL");
+  hidePolling = $state<boolean>(false);
 
   config = $state<ProxyConfig>({
     listenPort: 8080,
@@ -263,12 +332,16 @@ class RelayState {
   );
   totalJwts = $derived(this.jwts.length);
 
-  filteredExchanges = $derived(
-    this.exchanges.filter(e => {
+  filteredExchanges = $derived.by((): HttpExchange[] => {
+    const list = this.exchanges;
+
+    return list.filter((e, idx) => {
+      // 1. Filtro por Método HTTP
       if (this.methodFilter !== "ALL" && e.request.method.toUpperCase() !== this.methodFilter) {
         return false;
       }
 
+      // 2. Filtro por Status HTTP
       if (this.statusFilter !== "ALL") {
         if (this.statusFilter === "ERR") {
           if (e.status !== "failed" && (!e.response || e.response.statusCode < 400)) return false;
@@ -283,6 +356,26 @@ class RelayState {
         }
       }
 
+      // 3. Filtro por Origem (Manual Replay vs Automático Proxy)
+      const isManual = e.id.startsWith("replay-");
+      if (this.historySourceFilter === "MANUAL" && !isManual) return false;
+      if (this.historySourceFilter === "AUTO" && isManual) return false;
+
+      // 4. Filtro: Ocultar Polling / Repetições Rápidas em Sequência
+      if (this.hidePolling && !isManual) {
+        // Se houver outra requisição mais recente idêntica em menos de 4s, oculta a anterior
+        const firstMatchIndex = list.findIndex(
+          other =>
+            other.request.method === e.request.method &&
+            other.request.uri === e.request.uri &&
+            Math.abs(other.request.timestamp - e.request.timestamp) < 4000
+        );
+        if (firstMatchIndex >= 0 && firstMatchIndex !== idx) {
+          return false;
+        }
+      }
+
+      // 5. Filtro por Busca Textual
       if (this.searchQuery.trim()) {
         const query = this.searchQuery.toLowerCase().trim();
         const matchUri = e.request.uri.toLowerCase().includes(query);
@@ -293,8 +386,20 @@ class RelayState {
       }
 
       return true;
-    })
-  );
+    });
+  });
+
+  isPollingExchange(exchange: HttpExchange): boolean {
+    if (exchange.id.startsWith("replay-")) return false;
+    const sameRoute = this.exchanges.filter(
+      e =>
+        e.id !== exchange.id &&
+        e.request.method === exchange.request.method &&
+        e.request.uri === exchange.request.uri &&
+        Math.abs(e.request.timestamp - exchange.request.timestamp) < 4000
+    );
+    return sameRoute.length > 0;
+  }
 
   filteredTemplates = $derived(
     this.savedTemplates.filter(t => {
@@ -434,10 +539,17 @@ class RelayState {
   }
 
   addExchange(exchange: HttpExchange): void {
-    this.exchanges = [exchange, ...this.exchanges];
-    if (!this.selectedExchange) {
-      this.selectedExchange = exchange;
+    const exists = this.exchanges.some(e => e.id === exchange.id);
+    if (!exists) {
+      this.exchanges = [exchange, ...this.exchanges];
+    } else {
+      this.exchanges = this.exchanges.map(e => (e.id === exchange.id ? exchange : e));
     }
+    if (exchange.id.startsWith("replay-") || !this.selectedExchange) {
+      this.selectedExchange = exchange;
+      this.inspectorTab = "response";
+    }
+    this.scanForJwts(exchange);
     saveExchangesToStorage(this.exchanges);
   }
 
@@ -449,7 +561,107 @@ class RelayState {
       if (response?.body) {
         this.extractVariablesFromResponse(response.body);
       }
+      this.scanForJwts(item);
       saveExchangesToStorage(this.exchanges);
+
+      // Sempre que chegar resposta (especialmente chamadas manuais), seleciona e abre na aba response
+      if (this.selectedExchange?.id === requestId || requestId.startsWith("replay-")) {
+        this.selectedExchange = item;
+        this.inspectorTab = "response";
+      }
+    }
+  }
+
+  saveExchangeAsTemplate(exchange: HttpExchange, customName?: string): SavedRequestTemplate {
+    const uriPath = exchange.request.uri.split("?")[0];
+    const segments = uriPath.split("/").filter(Boolean);
+    let derivedTag: string | undefined = undefined;
+    if (segments.length > 0) {
+      if (segments[0] === "api" && segments.length > 1) {
+        derivedTag = segments[1];
+      } else {
+        derivedTag = segments[0];
+      }
+    }
+
+    const templateName =
+      customName || `${exchange.request.method} ${segments[segments.length - 1] || uriPath}`;
+
+    const newTemplate: SavedRequestTemplate = {
+      id: `tpl-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      name: templateName,
+      description: `Salvo do histórico em ${new Date(exchange.request.timestamp).toLocaleString()}`,
+      tag: derivedTag,
+      method: exchange.request.method,
+      uri: exchange.request.uri,
+      headers: exchange.request.headers.filter(
+        h => !["host", "content-length", "connection"].includes(h.key.toLowerCase())
+      ),
+      body: exchange.request.body,
+      requiresAuth: exchange.request.headers.some(h =>
+        ["authorization", "cookie", "x-access-token"].includes(h.key.toLowerCase())
+      ),
+    };
+
+    this.addTemplate(newTemplate);
+    return newTemplate;
+  }
+
+  select(exchange: HttpExchange | null): void {
+    this.selectedExchange = exchange;
+    this.inspectorTab = "response";
+  }
+
+  private scanForJwts(exchange: HttpExchange): void {
+    // 1. Headers da Requisição
+    for (const h of exchange.request.headers) {
+      const keyLower = h.key.toLowerCase();
+      if (keyLower === "authorization" || keyLower.includes("token") || keyLower === "cookie") {
+        if (h.value.includes("ey")) {
+          const jwt = parseJwtClientSide(h.value, `client_req_${keyLower}`);
+          if (jwt) this.addJwt(jwt);
+        }
+      }
+    }
+
+    // 2. Headers e Body da Resposta
+    if (exchange.response) {
+      for (const h of exchange.response.headers) {
+        const keyLower = h.key.toLowerCase();
+        if (keyLower === "authorization" || keyLower.includes("token") || keyLower === "set-cookie") {
+          if (h.value.includes("ey")) {
+            const jwt = parseJwtClientSide(h.value, `client_res_${keyLower}`);
+            if (jwt) this.addJwt(jwt);
+          }
+        }
+      }
+
+      if (exchange.response.body && exchange.response.body.includes("ey")) {
+        try {
+          const parsed = JSON.parse(exchange.response.body);
+          const scanObj = (obj: any, keyName = "") => {
+            if (typeof obj === "string") {
+              if (obj.includes("ey")) {
+                const jwt = parseJwtClientSide(obj, `client_body_${keyName || 'token'}`);
+                if (jwt) this.addJwt(jwt);
+              }
+            } else if (typeof obj === "object" && obj !== null) {
+              for (const [k, v] of Object.entries(obj)) {
+                scanObj(v, k);
+              }
+            }
+          };
+          scanObj(parsed);
+        } catch {
+          const words = exchange.response.body.split(/\s+|[,"';]+/);
+          for (const w of words) {
+            if (w.startsWith("ey") && w.split(".").length === 3) {
+              const jwt = parseJwtClientSide(w, "client_raw_body");
+              if (jwt) this.addJwt(jwt);
+            }
+          }
+        }
+      }
     }
   }
 
@@ -462,9 +674,32 @@ class RelayState {
     }
   }
 
-  select(exchange: HttpExchange | null): void {
-    this.selectedExchange = exchange;
-    this.inspectorTab = "request";
+  removeExchange(id: string): void {
+    this.exchanges = this.exchanges.filter(e => e.id !== id);
+    if (this.selectedExchange?.id === id) {
+      this.selectedExchange = this.exchanges[0] || null;
+    }
+    saveExchangesToStorage(this.exchanges);
+    try {
+      invoke("delete_exchange", { id }).catch(e => console.warn("Erro ao deletar exchange no Rust:", e));
+    } catch {
+      // Ignora erro de invoke se fora de runtime Tauri
+    }
+  }
+
+  removeExchanges(ids: string[]): void {
+    if (!ids || ids.length === 0) return;
+    const idSet = new Set(ids);
+    this.exchanges = this.exchanges.filter(e => !idSet.has(e.id));
+    if (this.selectedExchange && idSet.has(this.selectedExchange.id)) {
+      this.selectedExchange = this.exchanges[0] || null;
+    }
+    saveExchangesToStorage(this.exchanges);
+    try {
+      invoke("delete_exchanges", { ids }).catch(e => console.warn("Erro ao deletar exchanges no Rust:", e));
+    } catch {
+      // Ignora erro de invoke se fora de runtime Tauri
+    }
   }
 
   clear(): void {
@@ -487,6 +722,7 @@ class RelayState {
       this.extractedVariables["sub"] = jwt.subject;
       this.extractedVariables["customerId"] = jwt.subject;
     }
+    saveJwtsToStorage(this.jwts);
   }
 
   selectJwt(jwt: ExtractedJwt | null): void {
@@ -496,6 +732,7 @@ class RelayState {
   clearJwts(): void {
     this.jwts = [];
     this.selectedJwt = null;
+    saveJwtsToStorage(this.jwts);
   }
 }
 

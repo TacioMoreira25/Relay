@@ -1,7 +1,7 @@
 <script lang="ts">
   import { relayState } from "$lib/stores/traffic.svelte";
   import ReplayModal from "$lib/components/ReplayModal.svelte";
-  import { IconCopy, IconCheck, IconPlay, IconActivity, IconCode, IconSplit, IconPlus } from "$lib/components/icons";
+  import { IconCopy, IconCheck, IconPlay, IconActivity, IconCode, IconSplit, IconPlus, IconTrash, IconBookmark } from "$lib/components/icons";
 
   let {
     onOpenNewRequest = () => {},
@@ -15,6 +15,16 @@
   let compareTarget = $derived(relayState.diffCompareExchange);
   let copyFeedback = $state<string | null>(null);
   let isReplayOpen = $state<boolean>(false);
+  let saveFeedback = $state<boolean>(false);
+
+  function handleSaveToCollection(): void {
+    if (!exchange) return;
+    relayState.saveExchangeAsTemplate(exchange);
+    saveFeedback = true;
+    setTimeout(() => {
+      saveFeedback = false;
+    }, 2000);
+  }
 
   function formatBody(bodyStr?: string): { formatted: string; isJson: boolean } {
     if (!bodyStr || !bodyStr.trim()) {
@@ -143,6 +153,32 @@
         >
           <IconPlay size={11} class="fill-current" />
           <span>Replay</span>
+        </button>
+
+        <!-- Salvar na Coleção -->
+        <button
+          onclick={handleSaveToCollection}
+          class="text-xs px-2.5 py-1 rounded border transition-colors cursor-pointer flex items-center space-x-1.5 {saveFeedback ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white'}"
+          title="Salvar esta requisição do histórico na Coleção de rotas do projeto"
+        >
+          {#if saveFeedback}
+            <IconCheck size={12} class="text-amber-400" />
+            <span class="text-amber-300 font-medium">Salvo na Coleção!</span>
+          {:else}
+            <IconBookmark size={12} class="text-amber-400" />
+            <span>Salvar na Coleção</span>
+          {/if}
+        </button>
+
+        <!-- Apagar Requisição Atual -->
+        <button
+          onclick={() => {
+            if (exchange) relayState.removeExchange(exchange.id);
+          }}
+          class="p-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
+          title="Apagar esta requisição do histórico"
+        >
+          <IconTrash size={13} />
         </button>
 
         <!-- Segmented Tabs com Binding Direto na Store Global -->
@@ -295,6 +331,33 @@
                 <span class="text-zinc-300 font-medium">{res.sizeBytes} bytes</span>
               </div>
             </div>
+
+            <!-- Diagnóstico de Tráfego Recorrente e Erros de Rota -->
+            {#if res.statusCode === 404}
+              <div class="bg-rose-950/20 border border-rose-500/30 rounded-xl p-3.5 space-y-2 text-xs">
+                <div class="flex items-center space-x-2 text-rose-300 font-bold">
+                  <span class="w-2 h-2 rounded-full bg-rose-400"></span>
+                  <span>Rota Não Encontrada no Servidor (404 Not Found)</span>
+                </div>
+                <p class="text-[11px] text-zinc-300 leading-relaxed">
+                  O servidor de destino em <span class="font-mono text-zinc-200">{relayState.config.targetHost}:{relayState.config.targetPort}</span> informou que a rota <span class="font-mono text-rose-300">{exchange.request.uri}</span> não existe ou não está mapeada.
+                </p>
+                <div class="text-[10px] text-zinc-400 space-y-1 pt-1.5 border-t border-rose-500/10 font-mono">
+                  <p>• <strong>Repetições frequentes:</strong> Quando uma chamada falha, a aplicação cliente frequentemente executa tentativas automáticas de recarga para tentar obter os dados.</p>
+                  <p>• <strong>O que checar no projeto:</strong> Verifique se a rota no backend exige ou omite prefixos (como <span class="text-zinc-200">/api</span>), ou se o método HTTP está correto. É possível configurar uma Regra de Rota no Relay para reescrever o caminho automaticamente.</p>
+                </div>
+              </div>
+            {:else if relayState.isPollingExchange(exchange)}
+              <div class="bg-indigo-950/20 border border-indigo-500/30 rounded-xl p-3 space-y-1.5 text-xs">
+                <div class="flex items-center space-x-2 text-indigo-300 font-medium">
+                  <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
+                  <span>Requisição Recorrente em Intervalo Curto (Polling)</span>
+                </div>
+                <p class="text-[10px] text-zinc-400 leading-relaxed">
+                  Esta rota é disparada repetidamente pelo cliente em intervalos frequentes (sincronização em segundo plano, temporizadores ou reconexões automáticas). Você pode ocultar essas repetições ativando o filtro "Ocultar Polling" na barra lateral.
+                </p>
+              </div>
+            {/if}
 
             <!-- Response Headers -->
             <div class="space-y-2">

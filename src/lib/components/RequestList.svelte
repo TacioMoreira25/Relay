@@ -8,9 +8,13 @@
     IconBookmark,
     IconFolder,
     IconDownload,
+    IconCheck,
+    IconSquare,
   } from "$lib/components/icons";
-  import type { SavedRequestTemplate } from "$lib/types";
+  import type { SavedRequestTemplate, HttpExchange } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
+
+  import TrafficDiagnosticModal from "$lib/components/TrafficDiagnosticModal.svelte";
 
   let {
     onOpenTemplate = (_tpl: SavedRequestTemplate) => {},
@@ -23,6 +27,59 @@
   let fileInputRef = $state<HTMLInputElement | null>(null);
   let showCollectionExampleModal = $state(false);
   let copyFeedback = $state<string | null>(null);
+  let isDiagnosticModalOpen = $state(false);
+
+  let hasLoopingTraffic = $derived(
+    relayState.exchanges.slice(0, 20).filter(
+      e => e.response?.statusCode === 404 || relayState.isPollingExchange(e)
+    ).length >= 3
+  );
+
+  // Modo de seleção múltipla do histórico
+  let isSelectMode = $state<boolean>(false);
+  let selectedIds = $state<string[]>([]);
+
+  function toggleSelect(id: string, e?: Event): void {
+    e?.stopPropagation();
+    if (selectedIds.includes(id)) {
+      selectedIds = selectedIds.filter(i => i !== id);
+    } else {
+      selectedIds = [...selectedIds, id];
+    }
+  }
+
+  function toggleSelectAll(): void {
+    const currentFilteredIds = relayState.filteredExchanges.map(e => e.id);
+    if (selectedIds.length === currentFilteredIds.length && currentFilteredIds.length > 0) {
+      selectedIds = [];
+    } else {
+      selectedIds = [...currentFilteredIds];
+    }
+  }
+
+  function deleteSelected(): void {
+    if (selectedIds.length === 0) return;
+    relayState.removeExchanges(selectedIds);
+    selectedIds = [];
+    isSelectMode = false;
+  }
+
+  let savedIdFeedback = $state<string | null>(null);
+
+  function saveSingleToCollection(exchange: HttpExchange, e: Event): void {
+    e.stopPropagation();
+    relayState.saveExchangeAsTemplate(exchange);
+    savedIdFeedback = exchange.id;
+    setTimeout(() => {
+      if (savedIdFeedback === exchange.id) savedIdFeedback = null;
+    }, 2000);
+  }
+
+  function deleteSingle(id: string, e: Event): void {
+    e.stopPropagation();
+    relayState.removeExchange(id);
+    selectedIds = selectedIds.filter(i => i !== id);
+  }
 
   const methods = ["ALL", "GET", "POST", "PUT", "DELETE", "PATCH"];
 
@@ -280,13 +337,23 @@
           </button>
         </div>
       {:else if relayState.totalRequests > 0}
-        <button
-          onclick={clearTraffic}
-          class="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
-          title="Limpar Histórico (Ctrl+L)"
-        >
-          <IconTrash size={14} />
-        </button>
+        <div class="flex items-center space-x-1 shrink-0">
+          <button
+            onclick={() => { isSelectMode = !isSelectMode; selectedIds = []; }}
+            class="p-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 {isSelectMode ? 'bg-indigo-600/30 border-indigo-500/60 text-indigo-300' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-zinc-200'}"
+            title={isSelectMode ? "Sair do modo de seleção" : "Selecionar requisições para apagar"}
+          >
+            <IconCheck size={14} />
+          </button>
+
+          <button
+            onclick={clearTraffic}
+            class="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
+            title="Limpar Todo o Histórico (Ctrl+L)"
+          >
+            <IconTrash size={14} />
+          </button>
+        </div>
       {/if}
     </div>
 
@@ -312,6 +379,88 @@
         </button>
       {/each}
     </div>
+
+    <!-- Linha 4: Filtros Específicos de Histórico OU Barra de Ação de Seleção -->
+    {#if relayState.sidebarTab === 'history' && relayState.totalRequests > 0}
+      {#if isSelectMode}
+        <div class="flex items-center justify-between bg-zinc-900/90 border border-indigo-500/40 rounded-lg px-2 py-1 text-xs">
+          <div class="flex items-center space-x-1.5 text-[11px]">
+            <button
+              onclick={toggleSelectAll}
+              class="text-indigo-300 hover:text-indigo-200 transition-colors cursor-pointer underline text-[10px]"
+            >
+              {selectedIds.length === relayState.filteredExchanges.length && relayState.filteredExchanges.length > 0 ? "Desmarcar" : "Marcar todas"}
+            </button>
+            <span class="text-zinc-600">•</span>
+            <span class="text-zinc-400 font-mono text-[10px]">{selectedIds.length}</span>
+          </div>
+
+          <div class="flex items-center space-x-1.5">
+            <button
+              onclick={() => { isSelectMode = false; selectedIds = []; }}
+              class="text-[10px] px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
+            >
+              Cancelar
+            </button>
+            <button
+              onclick={deleteSelected}
+              disabled={selectedIds.length === 0}
+              class="text-[10px] px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-medium transition-colors cursor-pointer disabled:opacity-40"
+            >
+              Apagar ({selectedIds.length})
+            </button>
+          </div>
+        </div>
+      {:else}
+        <div class="flex items-center justify-between text-[10px] select-none pt-0.5">
+          <div class="flex items-center space-x-0.5 bg-zinc-950 p-0.5 rounded-md border border-zinc-800/80 font-mono">
+            <button
+              onclick={() => (relayState.historySourceFilter = "ALL")}
+              class="px-1.5 py-0.5 rounded transition-colors cursor-pointer {relayState.historySourceFilter === 'ALL' ? 'bg-zinc-800 text-zinc-100 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
+            >
+              Todas
+            </button>
+            <button
+              onclick={() => (relayState.historySourceFilter = "MANUAL")}
+              class="px-1.5 py-0.5 rounded transition-colors cursor-pointer {relayState.historySourceFilter === 'MANUAL' ? 'bg-indigo-600/30 text-indigo-300 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
+              title="Apenas requisições disparadas manualmente pelo Replay"
+            >
+              Manuais
+            </button>
+            <button
+              onclick={() => (relayState.historySourceFilter = "AUTO")}
+              class="px-1.5 py-0.5 rounded transition-colors cursor-pointer {relayState.historySourceFilter === 'AUTO' ? 'bg-zinc-800 text-zinc-100 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
+              title="Apenas requisições capturadas do navegador/aplicação"
+            >
+              Capturadas
+            </button>
+          </div>
+
+          <button
+            onclick={() => (relayState.hidePolling = !relayState.hidePolling)}
+            class="px-2 py-1 rounded-md text-[10px] font-mono transition-all cursor-pointer flex items-center space-x-1 border {relayState.hidePolling ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 font-medium' : 'bg-zinc-950 border-zinc-800/80 text-zinc-500 hover:text-zinc-300'}"
+            title="Oculta requisições repetidas idênticas em curto intervalo (polling contínuo do frontend)"
+          >
+            <span>{relayState.hidePolling ? "Polling Oculto" : "Ocultar Polling"}</span>
+          </button>
+        </div>
+      {/if}
+    {/if}
+
+    <!-- Alerta Didático de Tráfego em Loop (Se detectado) -->
+    {#if hasLoopingTraffic && relayState.sidebarTab === 'history'}
+      <button
+        onclick={() => (isDiagnosticModalOpen = true)}
+        class="w-full text-left px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] flex items-center justify-between transition-colors cursor-pointer"
+        title="Clique para entender por que tantas requisições estão chegando em loop"
+      >
+        <div class="flex items-center space-x-1.5 truncate">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0"></span>
+          <span class="truncate">Tráfego repetido / 404 detectado no projeto</span>
+        </div>
+        <span class="underline shrink-0 ml-1 font-mono font-medium">Diagnóstico</span>
+      </button>
+    {/if}
   </div>
 
   <!-- Content List Area -->
@@ -319,17 +468,53 @@
     {#if relayState.sidebarTab === "history"}
       <!-- 1. HISTÓRICO DE TRÁFEGO -->
       {#each relayState.filteredExchanges as exchange (exchange.id)}
+        {@const isManual = exchange.id.startsWith("replay-")}
+        {@const isPoll = relayState.isPollingExchange(exchange)}
+        {@const isSelected = selectedIds.includes(exchange.id)}
         <div
           role="button"
           tabindex="0"
-          onclick={() => relayState.select(exchange)}
-          onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') relayState.select(exchange); }}
-          class="p-2.5 text-left w-full hover:bg-zinc-900/60 transition-colors cursor-pointer flex flex-col space-y-1 {relayState.selectedExchange?.id === exchange.id ? 'bg-zinc-900/90 border-l-2 border-indigo-500' : ''}"
+          onclick={(e) => {
+            if (isSelectMode) {
+              toggleSelect(exchange.id, e);
+            } else {
+              relayState.select(exchange);
+            }
+          }}
+          onkeydown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              if (isSelectMode) toggleSelect(exchange.id);
+              else relayState.select(exchange);
+            }
+          }}
+          class="group p-2.5 text-left w-full hover:bg-zinc-900/60 transition-colors cursor-pointer flex flex-col space-y-1.5 relative {relayState.selectedExchange?.id === exchange.id && !isSelectMode ? 'bg-zinc-900/90 border-l-2 border-indigo-500' : ''} {isSelected ? 'bg-indigo-950/25 border-l-2 border-indigo-400' : ''}"
         >
           <div class="flex items-center justify-between font-mono text-xs">
-            <span class="px-1.5 py-0.2 rounded text-[10px] font-bold border {getMethodBadgeStyle(exchange.request.method)}">
-              {exchange.request.method}
-            </span>
+            <div class="flex items-center space-x-1.5">
+              {#if isSelectMode}
+                <input
+                  type="checkbox"
+                  checked={isSelected}
+                  onchange={(e) => toggleSelect(exchange.id, e)}
+                  onclick={(e) => e.stopPropagation()}
+                  class="rounded bg-zinc-900 border-zinc-700 text-indigo-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                />
+              {/if}
+
+              <span class="px-1.5 py-0.2 rounded text-[10px] font-bold border {getMethodBadgeStyle(exchange.request.method)}">
+                {exchange.request.method}
+              </span>
+
+              {#if isManual}
+                <span class="px-1 py-0.2 rounded text-[9px] font-bold font-mono bg-indigo-500/10 text-indigo-300 border border-indigo-500/20" title="Disparo manual via Disparador/Replay">
+                  MANUAL
+                </span>
+              {:else if isPoll}
+                <span class="px-1 py-0.2 rounded text-[9px] font-mono bg-zinc-800 text-zinc-400 border border-zinc-700" title="Requisição repetida rápida em sequência (polling)">
+                  POLL
+                </span>
+              {/if}
+            </div>
 
             <div class="flex items-center space-x-2 text-[11px]">
               {#if exchange.response}
@@ -341,6 +526,27 @@
                 <span class="text-rose-400 font-bold text-[10px]">ERR</span>
               {:else}
                 <span class="text-amber-400 text-[10px]">...</span>
+              {/if}
+
+              {#if !isSelectMode}
+                <button
+                  onclick={(e) => saveSingleToCollection(exchange, e)}
+                  class="p-0.5 rounded transition-colors cursor-pointer ml-1 {savedIdFeedback === exchange.id ? 'text-emerald-400' : 'text-zinc-500 hover:text-amber-400'}"
+                  title={savedIdFeedback === exchange.id ? "Salvo na Coleção!" : "Salvar na Coleção de Rotas"}
+                >
+                  {#if savedIdFeedback === exchange.id}
+                    <IconCheck size={13} class="text-emerald-400" />
+                  {:else}
+                    <IconBookmark size={13} />
+                  {/if}
+                </button>
+                <button
+                  onclick={(e) => deleteSingle(exchange.id, e)}
+                  class="opacity-0 group-hover:opacity-100 hover:text-rose-400 text-zinc-500 p-0.5 rounded transition-opacity cursor-pointer ml-0.5"
+                  title="Apagar esta requisição"
+                >
+                  <IconTrash size={12} />
+                </button>
               {/if}
             </div>
           </div>
@@ -534,3 +740,5 @@
     </div>
   </div>
 {/if}
+
+<TrafficDiagnosticModal bind:isOpen={isDiagnosticModalOpen} />

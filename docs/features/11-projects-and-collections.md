@@ -39,3 +39,14 @@ Na aba **Coleção**, as rotas importadas são organizadas automaticamente em **
 * **Detecção Automática:** As pastas são geradas dinamicamente com base nas `tags` do OpenAPI/Postman ou pelo primeiro segmento da URL (`/atendimentos/...` -> Pasta `atendimentos`).
 * **Contadores de Rotas:** Cada pasta exibe a quantidade total de endpoints vinculados.
 * **Expansão com 1 Clique:** As pastas podem ser abertas ou recolhidas individualmente, mantendo a tela limpa mesmo com dezenas de rotas cadastradas.
+
+---
+
+## 4. Salvar Requisições do Histórico na Coleção
+
+Você pode converter qualquer chamada real capturada ou testada em um template reutilizável da Coleção:
+
+* **Pelo Card do Histórico (1 Clique):** Cada item na lista de histórico possui um ícone de marcador (*bookmark*). Ao clicar, a chamada é adicionada imediatamente à Coleção.
+* **Pelo Cabeçalho do Inspector:** Ao inspecionar uma requisição, clique em **Salvar na Coleção** (ao lado do Replay).
+* **Sanitização Automática:** O Relay limpa cabeçalhos de transporte voláteis (`host`, `content-length`, `connection`), preserva payloads e infere a tag da pasta baseado no caminho do recurso.
+* **Persistência Imediata:** A nova rota passa a fazer parte do workspace do projeto ativo, pronta para ser disparada novamente a qualquer momento pelo Replay.

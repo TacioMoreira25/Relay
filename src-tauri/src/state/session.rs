@@ -1,4 +1,7 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{
+    engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD},
+    Engine as _,
+};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -48,7 +51,23 @@ impl SessionState {
 
 /// Decodifica o payload de um token JWT sem validar assinatura criptográfica (para inspeção)
 pub fn decode_jwt_token(token_str: &str, source: &str) -> Option<ExtractedJwt> {
-    let parts: Vec<&str> = token_str.split('.').collect();
+    let clean_token = token_str
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_matches('`');
+
+    let stripped = if let Some(t) = clean_token.strip_prefix("Bearer ") {
+        t.trim()
+    } else if let Some(t) = clean_token.strip_prefix("bearer ") {
+        t.trim()
+    } else if let Some(t) = clean_token.strip_prefix("BEARER ") {
+        t.trim()
+    } else {
+        clean_token
+    };
+
+    let parts: Vec<&str> = stripped.split('.').collect();
     if parts.len() != 3 {
         return None;
     }
@@ -61,8 +80,7 @@ pub fn decode_jwt_token(token_str: &str, source: &str) -> Option<ExtractedJwt> {
 
     let subject = claims_json
         .get("sub")
-        .and_then(|v| v.as_str())
-        .map(String::from);
+        .and_then(|v| v.as_str().map(String::from).or_else(|| v.as_i64().map(|n| n.to_string())));
     let issuer = claims_json
         .get("iss")
         .and_then(|v| v.as_str())
@@ -70,7 +88,7 @@ pub fn decode_jwt_token(token_str: &str, source: &str) -> Option<ExtractedJwt> {
     let expires_at = claims_json.get("exp").and_then(|v| v.as_i64());
 
     Some(ExtractedJwt {
-        token: token_str.to_string(),
+        token: stripped.to_string(),
         source: source.to_string(),
         detected_at: chrono::Utc::now().timestamp_millis(),
         claims: Some(claims_json),
@@ -82,8 +100,14 @@ pub fn decode_jwt_token(token_str: &str, source: &str) -> Option<ExtractedJwt> {
 }
 
 fn decode_base64_json(b64_str: &str) -> Option<serde_json::Value> {
-    let unpadded = b64_str.trim_end_matches('=');
-    let decoded_bytes = URL_SAFE_NO_PAD.decode(unpadded).ok()?;
+    let clean = b64_str.trim().trim_matches('"').trim_matches('\'');
+    let unpadded = clean.trim_end_matches('=');
+    let decoded_bytes = URL_SAFE_NO_PAD
+        .decode(unpadded)
+        .or_else(|_| STANDARD_NO_PAD.decode(unpadded))
+        .or_else(|_| URL_SAFE.decode(clean))
+        .or_else(|_| STANDARD.decode(clean))
+        .ok()?;
     let json_str = String::from_utf8(decoded_bytes).ok()?;
     serde_json::from_str(&json_str).ok()
 }
@@ -97,25 +121,39 @@ pub fn extract_jwts_from_headers(
 
     for (k, v) in headers {
         let key_lower = k.to_lowercase();
-        if key_lower == "authorization" {
-            if let Some(token_part) = v
-                .strip_prefix("Bearer ")
-                .or_else(|| v.strip_prefix("bearer "))
-            {
-                if let Some(jwt) =
-                    decode_jwt_token(token_part.trim(), &format!("{}_header_auth", source_prefix))
-                {
-                    tokens.push(jwt);
+        let val_trimmed = v.trim();
+
+        if key_lower == "authorization" || key_lower == "authentication" {
+            if let Some(jwt) = decode_jwt_token(val_trimmed, &format!("{}_header_auth", source_prefix)) {
+                tokens.push(jwt);
+            }
+        } else if key_lower == "set-cookie" || key_lower == "cookie" {
+            for cookie_part in val_trimmed.split(';') {
+                let cookie_trimmed = cookie_part.trim();
+                if let Some((cookie_name, cookie_val)) = cookie_trimmed.split_once('=') {
+                    let c_val = cookie_val.trim();
+                    if (c_val.starts_with("ey") || c_val.contains('.')) && c_val.len() > 20 {
+                        if let Some(jwt) = decode_jwt_token(
+                            c_val,
+                            &format!("{}_cookie_{}", source_prefix, cookie_name.trim().to_lowercase()),
+                        ) {
+                            tokens.push(jwt);
+                        }
+                    }
                 }
             }
         } else if key_lower == "x-access-token"
             || key_lower == "x-auth-token"
             || key_lower == "jwt"
             || key_lower == "token"
+            || key_lower == "access-token"
+            || key_lower == "id-token"
         {
-            if let Some(jwt) =
-                decode_jwt_token(v.trim(), &format!("{}_header_{}", source_prefix, key_lower))
-            {
+            if let Some(jwt) = decode_jwt_token(val_trimmed, &format!("{}_header_{}", source_prefix, key_lower)) {
+                tokens.push(jwt);
+            }
+        } else if val_trimmed.starts_with("eyJ") && val_trimmed.contains('.') {
+            if let Some(jwt) = decode_jwt_token(val_trimmed, &format!("{}_header_{}", source_prefix, key_lower)) {
                 tokens.push(jwt);
             }
         }
@@ -132,6 +170,10 @@ pub fn extract_jwts_from_body(body_str: &str, source_prefix: &str) -> Vec<Extrac
         scan_json_for_jwts(&val, source_prefix, &mut tokens);
     }
 
+    if tokens.is_empty() && body_str.contains("ey") {
+        scan_raw_text_for_jwts(body_str, source_prefix, &mut tokens);
+    }
+
     tokens
 }
 
@@ -144,11 +186,19 @@ fn scan_json_for_jwts(
         serde_json::Value::Object(map) => {
             for (k, v) in map {
                 if let serde_json::Value::String(s) = v {
-                    if s.starts_with("ey") && s.contains('.') {
+                    let s_trimmed = s.trim();
+                    if (s_trimmed.starts_with("ey")
+                        || s_trimmed.starts_with("Bearer ey")
+                        || s_trimmed.starts_with("bearer ey")
+                        || s_trimmed.starts_with("BEARER ey"))
+                        && s_trimmed.contains('.')
+                    {
                         if let Some(jwt) =
-                            decode_jwt_token(s, &format!("{}_field_{}", source_prefix, k))
+                            decode_jwt_token(s_trimmed, &format!("{}_field_{}", source_prefix, k))
                         {
-                            tokens.push(jwt);
+                            if !tokens.iter().any(|t| t.token == jwt.token) {
+                                tokens.push(jwt);
+                            }
                         }
                     }
                 } else {
@@ -162,6 +212,23 @@ fn scan_json_for_jwts(
             }
         }
         _ => {}
+    }
+}
+
+fn scan_raw_text_for_jwts(
+    text: &str,
+    source_prefix: &str,
+    tokens: &mut Vec<ExtractedJwt>,
+) {
+    for word in text.split(|c: char| c.is_whitespace() || c == '"' || c == '\'' || c == ';' || c == ',') {
+        let w = word.trim();
+        if w.starts_with("eyJ") && w.split('.').count() == 3 {
+            if let Some(jwt) = decode_jwt_token(w, &format!("{}_raw_body", source_prefix)) {
+                if !tokens.iter().any(|t| t.token == jwt.token) {
+                    tokens.push(jwt);
+                }
+            }
+        }
     }
 }
 
@@ -197,5 +264,24 @@ mod tests {
         let extracted = extract_jwts_from_headers(&headers, "request");
         assert_eq!(extracted.len(), 1);
         assert_eq!(extracted[0].subject, Some("user_12345".to_string()));
+    }
+
+    #[test]
+    fn test_extract_jwts_from_cookies_and_body() {
+        let test_token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJ1c2VyXzEyMzQ1IiwibmFtZSI6IlRhY2lvIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNTE2MjM5MDIyLCJleHAiOjE5OTk5OTk5OTl9.signature_aqui";
+
+        // Cookie
+        let headers = vec![
+            ("set-cookie".to_string(), format!("access_token={}; Path=/; HttpOnly", test_token)),
+        ];
+        let extracted_cookie = extract_jwts_from_headers(&headers, "response");
+        assert_eq!(extracted_cookie.len(), 1);
+        assert_eq!(extracted_cookie[0].subject, Some("user_12345".to_string()));
+
+        // Body com Bearer
+        let body_json = format!(r#"{{"data": {{"token": "Bearer {}"}}}}"#, test_token);
+        let extracted_body = extract_jwts_from_body(&body_json, "response");
+        assert_eq!(extracted_body.len(), 1);
+        assert_eq!(extracted_body[0].subject, Some("user_12345".to_string()));
     }
 }

@@ -21,11 +21,13 @@ O Relay foi projetado para substituir clientes pesados de API por um proxy leve 
 
 Construido com arquitetura nativa em **Rust (Tokio + Hyper)** e **Tauri v2 com Svelte 5**:
 * **Streaming Assincrono:** Repasse de trafego quase instantaneo com fatias de bytes em memoria.
-* **Sistema de Multi-Projetos:** Workspaces isolados com persistencia automatica para gerenciar rotas, mocks e colecoes sem misturar APIs.
+* **Sistema de Multi-Projetos & Colecoes:** Workspaces isolados com persistencia automatica para gerenciar rotas, mocks e colecoes; salve chamadas do historico na colecao com 1 clique.
+* **Inspecionador Fluido & Foco no Response:** Abertura direta na aba Response, layout com barra lateral redimensionavel e gerador de cURL.
+* **Filtros Anti-Ruido & Diagnostico Agnostico:** Filtro para ocultar polling e explicacoes didaticas para retries 404 e canais em tempo real para qualquer stack.
 * **Importador Universal:** Suporte nativo a importacao direta de arquivos OpenAPI 3.0 / Swagger e colecoes Postman v2.1 em pastas dinamicas.
 * **Auto-Descoberta de Portas:** Escaneamento nao-bloqueante e neutro de portas e servicos locais de desenvolvimento.
 * **Gerenciamento de Ambientes:** Alternancia rapida entre servicos locais, rotas de mock e endpoints de homologacao.
-* **Captura Inteligente de Sessao:** Deteccao automatica e decodificacao de tokens JWT no trafego.
+* **Captura Inteligente de Sessao:** Deteccao automatica e decodificacao de tokens JWT no trafego e em chamadas de replay.
 * **Interface Fluida:** Reatividade nativa sem Virtual DOM utilizando Svelte 5 Runes.
 
 ---
@@ -143,10 +145,10 @@ sequenceDiagram
 | Modulo | Descricao |
 | :--- | :--- |
 | **Proxy Engine** | Motor TCP assincrono Tokio + Hyper, rotas de Mock e Chaos Simulator |
-| **Live Inspector** | Visualizacao em tempo real de requisicoes, headers, payloads e cURL generator |
-| **JWT & Session** | Deteccao automatica e decodificacao de claims JWT |
-| **HTTP Replay** | Disparo de requisicoes manuais com variaveis dinamicas (`{{token}}`, `{{id}}`) |
+| **Live Inspector** | Inspecionador em tempo real, abertura direta no Response, barra lateral redimensionavel, filtros e cURL |
+| **JWT & Session** | Deteccao automatica e decodificacao de claims JWT em headers, cookies e payloads (proxy e replay) |
+| **HTTP Replay** | Disparo de requisicoes manuais com variaveis dinamicas (`{{token}}`, `{{id}}`) e foco automatico no retorno |
 | **Chaos Engineering** | Injeção de latencia artificial com jitter e simulacao de falhas HTTP |
 | **Export & CA** | Exportacao para HAR 1.2, OpenAPI 3.0 e geracao de certificados CA locais |
-| **Multi-Projetos & Colecoes** | Workspaces isolados, importador OpenAPI/Postman e pastas em arvore |
+| **Multi-Projetos & Colecoes** | Workspaces isolados, importador OpenAPI/Postman, pastas em arvore e salvamento direto do historico |
 | **Ambientes & Scanner** | Deteccao assincrona de portas ativas no Linux e alvos personalizados |

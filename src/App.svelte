@@ -35,6 +35,37 @@
 
   let activeTestingTemplate = $state<SavedRequestTemplate | null>(null);
 
+  // Barra lateral redimensionável
+  let sidebarWidth = $state<number>(
+    typeof window !== "undefined"
+      ? parseInt(localStorage.getItem("relay_sidebar_width") || "320", 10)
+      : 320
+  );
+  let isResizingSidebar = $state<boolean>(false);
+
+  function startResize(e: MouseEvent): void {
+    e.preventDefault();
+    isResizingSidebar = true;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const maxAllowed = Math.min(750, window.innerWidth * 0.65);
+      const newWidth = Math.max(260, Math.min(maxAllowed, moveEvent.clientX));
+      sidebarWidth = newWidth;
+    };
+
+    const onMouseUp = () => {
+      isResizingSidebar = false;
+      if (typeof window !== "undefined") {
+        localStorage.setItem("relay_sidebar_width", sidebarWidth.toString());
+      }
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }
+
   function handleOpenTemplate(tpl: SavedRequestTemplate): void {
     activeTestingTemplate = tpl;
     isNewRequestOpen = true;
@@ -242,15 +273,29 @@
   </header>
 
   <!-- Main View Content Area -->
-  <div class="flex-1 flex overflow-hidden">
+  <div class="flex-1 flex overflow-hidden {isResizingSidebar ? 'cursor-col-resize select-none' : ''}">
     {#if relayState.activeView === "traffic"}
-      <!-- Left Column: Request List with History / Collection Segmented Tabs -->
-      <div class="w-80 border-r border-zinc-800/80 h-full bg-zinc-950">
+      <!-- Left Column: Request List with Resizable Width -->
+      <div
+        class="h-full bg-zinc-950 shrink-0 overflow-hidden flex flex-col"
+        style="width: {sidebarWidth}px;"
+      >
         <RequestList onOpenTemplate={handleOpenTemplate} onOpenNewRequest={() => { activeTestingTemplate = null; isNewRequestOpen = true; }} />
       </div>
 
+      <!-- Divisor Redimensionável (Splitter Handle) -->
+      <div
+        role="separator"
+        tabindex="0"
+        onmousedown={startResize}
+        class="w-1 h-full hover:w-1 bg-zinc-800/80 hover:bg-indigo-500/80 transition-colors cursor-col-resize shrink-0 relative group select-none {isResizingSidebar ? 'bg-indigo-500' : ''}"
+        title="Clique e arraste para redimensionar a barra lateral"
+      >
+        <div class="absolute inset-y-0 -left-1 -right-1 cursor-col-resize"></div>
+      </div>
+
       <!-- Right Column: Inspector or Educational Empty State -->
-      <div class="flex-1 h-full bg-zinc-950">
+      <div class="flex-1 h-full bg-zinc-950 min-w-0 overflow-hidden">
         <Inspector onOpenNewRequest={() => { activeTestingTemplate = null; isNewRequestOpen = true; }} onToggleProxy={toggleProxy} />
       </div>
     {:else}

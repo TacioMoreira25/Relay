@@ -174,7 +174,9 @@
       });
 
       if (res) {
+        relayState.addExchange(res);
         relayState.select(res);
+        relayState.inspectorTab = "response";
         relayState.sidebarTab = "history";
       }
       closeModal();

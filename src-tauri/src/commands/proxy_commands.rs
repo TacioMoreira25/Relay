@@ -17,7 +17,9 @@ use crate::proxy::recorder::{
 };
 use crate::proxy::scanner::{scan_local_targets, DiscoveredTarget};
 use crate::proxy::GeneratedCa;
-use crate::state::{ExtractedJwt, SessionState};
+use crate::state::{
+    extract_jwts_from_body, extract_jwts_from_headers, ExtractedJwt, SessionState,
+};
 
 pub struct AppState {
     pub proxy_server: Mutex<Option<ProxyServer>>,
@@ -115,6 +117,21 @@ pub async fn get_exchanges(state: State<'_, Arc<AppState>>) -> Result<Vec<HttpEx
 #[tauri::command]
 pub async fn clear_exchanges(state: State<'_, Arc<AppState>>) -> Result<(), String> {
     state.exchanges.lock().clear();
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_exchange(state: State<'_, Arc<AppState>>, id: String) -> Result<(), String> {
+    let mut exchs = state.exchanges.lock();
+    exchs.retain(|e| e.id != id);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_exchanges(state: State<'_, Arc<AppState>>, ids: Vec<String>) -> Result<(), String> {
+    let id_set: std::collections::HashSet<String> = ids.into_iter().collect();
+    let mut exchs = state.exchanges.lock();
+    exchs.retain(|e| !id_set.contains(&e.id));
     Ok(())
 }
 
@@ -633,7 +650,34 @@ pub async fn execute_replay(
     exchange.response = Some(intercepted_res.clone());
     exchange.status = "completed".to_string();
 
+    // Auto-extração de JWT na requisição e na resposta do Replay
+    if config.auto_extract_jwt {
+        let req_header_tuples: Vec<(String, String)> = payload
+            .headers
+            .iter()
+            .map(|h| (h.key.clone(), h.value.clone()))
+            .collect();
+        let mut replay_jwts = extract_jwts_from_headers(&req_header_tuples, "replay_request");
+
+        let res_header_tuples: Vec<(String, String)> = intercepted_res
+            .headers
+            .iter()
+            .map(|h| (h.key.clone(), h.value.clone()))
+            .collect();
+        replay_jwts.extend(extract_jwts_from_headers(&res_header_tuples, "replay_response_header"));
+
+        if let Some(ref b) = intercepted_res.body {
+            replay_jwts.extend(extract_jwts_from_body(b, "replay_response_body"));
+        }
+
+        for jwt in replay_jwts {
+            state.session.insert_jwt(jwt.clone());
+            let _ = app.emit("relay:jwt", &jwt);
+        }
+    }
+
     state.exchanges.lock().push(exchange.clone());
+    let _ = app.emit("relay:request", &exchange);
     let _ = app.emit("relay:response", &intercepted_res);
 
     Ok(exchange)
