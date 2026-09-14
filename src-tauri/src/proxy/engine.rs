@@ -237,9 +237,13 @@ pub async fn handle_proxy_request(
         }
     }
 
-    // Armazena no estado compartilhado em memória
+    // Armazena no estado compartilhado em memória (Ring buffer rígido de 150 itens)
     if let Some(state) = app.try_state::<Arc<AppState>>() {
-        state.exchanges.lock().push(exchange.clone());
+        let mut exchs = state.exchanges.lock();
+        if exchs.len() >= 150 {
+            exchs.remove(0);
+        }
+        exchs.push(exchange.clone());
     }
 
     let _ = app.emit("relay:request", &exchange);

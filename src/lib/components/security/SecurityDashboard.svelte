@@ -9,9 +9,14 @@
     IconCode,
     IconCheck,
     IconCopy,
+    IconPlay,
   } from "$lib/components/icons";
+  import ActiveProbesModal from "./ActiveProbesModal.svelte";
+  import StrideMap from "./StrideMap.svelte";
 
   let copyFeedback = $state<string | null>(null);
+  let isProbesModalOpen = $state<boolean>(false);
+  let activeSubView = $state<"dast" | "stride">("dast");
 
   async function copyToClipboard(text: string, id: string): Promise<void> {
     try {
@@ -206,22 +211,55 @@
       </div>
     </div>
 
-    <!-- Actions: Clear & Info -->
-    <div class="flex items-center space-x-3">
-      {#if relayState.totalFindings > 0}
+    <!-- Sub-navigation & Actions -->
+    <div class="flex items-center space-x-2.5 shrink-0">
+      <div class="flex items-center space-x-0.5 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 text-xs">
+        <button
+          onclick={() => (activeSubView = "dast")}
+          class="px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 {activeSubView === 'dast' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+        >
+          <IconShield size={12} class="text-indigo-400" />
+          <span>Auditoria DAST</span>
+        </button>
+        <button
+          onclick={() => (activeSubView = "stride")}
+          class="px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 {activeSubView === 'stride' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+        >
+          <IconAlertTriangle size={12} class="text-amber-400" />
+          <span>Modelo STRIDE</span>
+        </button>
+      </div>
+
+      <!-- Botão para Disparar Sondas Ativas -->
+      <button
+        onclick={() => (isProbesModalOpen = true)}
+        class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
+        title="Disparar testes ativos de Mass Assignment, BOLA, Auth Bypass, etc."
+      >
+        <IconPlay size={11} class="fill-current" />
+        <span>Testes Ativos (Probes)</span>
+      </button>
+
+      {#if relayState.totalFindings > 0 && activeSubView === 'dast'}
         <button
           onclick={() => relayState.clearSecurityFindings()}
-          class="text-xs text-zinc-400 hover:text-rose-400 transition-colors px-3 py-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900 flex items-center space-x-1.5 cursor-pointer shadow-xs"
+          class="text-xs text-zinc-400 hover:text-rose-400 transition-colors px-2.5 py-1.5 rounded-lg border border-zinc-800 hover:border-zinc-700 bg-zinc-900 flex items-center space-x-1.5 cursor-pointer shadow-xs"
+          title="Limpar todos os achados de segurança"
         >
           <IconTrash size={13} />
-          <span>Limpar Resultados</span>
+          <span>Limpar</span>
         </button>
       {/if}
     </div>
   </div>
 
-  <!-- Main Content Area: Split View -->
-  <div class="flex-1 flex overflow-hidden">
+  {#if activeSubView === "stride"}
+    <div class="flex-1 overflow-hidden">
+      <StrideMap />
+    </div>
+  {:else}
+    <!-- Main Content Area: Split View -->
+    <div class="flex-1 flex overflow-hidden">
     <!-- Left Column: Findings List -->
     <div class="w-96 border-r border-zinc-800/80 bg-zinc-950 flex flex-col h-full shrink-0 select-none">
       <div class="p-2.5 border-b border-zinc-800/80 flex items-center justify-between bg-zinc-900/20">
@@ -381,4 +419,7 @@
       {/if}
     </div>
   </div>
+  {/if}
+
+  <ActiveProbesModal bind:isOpen={isProbesModalOpen} exchange={null} />
 </div>

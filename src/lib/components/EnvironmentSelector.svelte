@@ -1,13 +1,14 @@
 <script lang="ts">
   import { relayState } from "$lib/stores/traffic.svelte";
   import type { TargetEnvironment, DiscoveredTarget } from "$lib/types";
-  import { IconServer, IconPlus, IconTrash, IconPencil } from "$lib/components/icons";
+  import { IconPlus, IconTrash, IconPencil, IconActivity } from "$lib/components/icons";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
 
   let isOpen = $state<boolean>(false);
   let isAddModalOpen = $state<boolean>(false);
   let editingTargetId = $state<string | null>(null);
+  let isTargetActive = $state<boolean>(false);
 
   // Form para adicionar/editar alvo manual
   let newName = $state<string>("");
@@ -15,15 +16,38 @@
   let newPort = $state<number>(3000);
   let newIsHttps = $state<boolean>(false);
 
+  async function checkTargetStatus(): Promise<void> {
+    try {
+      const active = await invoke<boolean>("check_target_active", {
+        host: relayState.config.targetHost,
+        port: relayState.config.targetPort,
+      });
+      isTargetActive = active;
+    } catch {
+      const found = relayState.discoveredTargets.find(
+        (t) => t.port === relayState.config.targetPort && (t.host === relayState.config.targetHost || t.host === "127.0.0.1")
+      );
+      isTargetActive = found ? found.isActive : false;
+    }
+  }
+
   async function scanPorts(): Promise<void> {
     relayState.isScanningTargets = true;
     try {
       const results = await invoke<DiscoveredTarget[]>("scan_active_targets");
       relayState.discoveredTargets = results;
+      await checkTargetStatus();
     } catch (e) {
       console.warn("Falha ao escanear portas locais:", e);
     } finally {
       relayState.isScanningTargets = false;
+    }
+  }
+
+  function handleToggleOpen(): void {
+    isOpen = !isOpen;
+    if (isOpen) {
+      scanPorts();
     }
   }
 
@@ -34,6 +58,7 @@
     } catch (e) {
       console.error("Erro ao sincronizar target:", e);
     }
+    await checkTargetStatus();
     isOpen = false;
   }
 
@@ -110,20 +135,34 @@
   }
 
   onMount(() => {
+    checkTargetStatus();
     scanPorts();
+    const interval = setInterval(checkTargetStatus, 4000);
+    return () => clearInterval(interval);
   });
 </script>
 
 <div class="relative inline-block text-left">
   <!-- Botão Discreto e Objetivo no Header -->
   <button
-    onclick={() => (isOpen = !isOpen)}
-    class="flex items-center space-x-1.5 text-xs px-2 py-1 rounded-md bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-200 transition-colors cursor-pointer shadow-xs whitespace-nowrap shrink-0"
-    title="Alterne a porta ou host da sua API de destino"
+    onclick={handleToggleOpen}
+    class="flex items-center space-x-2 text-xs px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 text-zinc-200 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0"
+    title={isTargetActive ? `Alvo ativo e respondendo em ${relayState.config.targetHost}:${relayState.config.targetPort}` : `Alvo configurado: ${relayState.config.targetHost}:${relayState.config.targetPort}`}
   >
-    <IconServer size={13} class="text-zinc-400 shrink-0" />
-    <span class="font-medium text-[11px] text-zinc-400 hidden xl:inline">API Alvo:</span>
-    <span class="font-mono text-zinc-200 font-semibold">{relayState.config.targetHost}:{relayState.config.targetPort}</span>
+    <div class="flex items-center space-x-1.5">
+      <span
+        class="w-2 h-2 rounded-full shrink-0 transition-colors {isTargetActive ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]' : 'bg-zinc-500'}"
+      ></span>
+      <span class="font-normal text-xs text-zinc-400">Alvo:</span>
+    </div>
+    <span class="font-mono text-xs font-semibold text-zinc-100">
+      {relayState.config.targetHost}:{relayState.config.targetPort}
+    </span>
+    {#if isTargetActive}
+      <span class="text-[9px] px-1.5 py-0.2 rounded font-mono uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium">
+        online
+      </span>
+    {/if}
     <span class="text-zinc-500 text-[10px] ml-0.5">▾</span>
   </button>
 
@@ -135,23 +174,29 @@
       role="presentation"
     ></div>
 
-    <div class="absolute left-0 mt-2 w-72 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl z-40 p-3 space-y-3 text-xs">
+    <div class="absolute left-0 mt-2 w-80 bg-zinc-900/95 backdrop-blur-md border border-zinc-800 rounded-xl shadow-2xl z-40 p-3 space-y-3 text-xs">
       <!-- Seção: Portas Locais Detectadas -->
       <div class="space-y-1.5">
-        <div class="flex items-center justify-between text-zinc-400 border-b border-zinc-800 pb-1">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">APIs Detectadas no Sistema</span>
+        <div class="flex items-center justify-between text-zinc-400 border-b border-zinc-800 pb-1.5">
+          <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">APIs Detectadas no Sistema</span>
           <button
             onclick={scanPorts}
             disabled={relayState.isScanningTargets}
-            class="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer disabled:opacity-50"
+            class="text-[11px] text-indigo-400 hover:text-indigo-300 transition-colors flex items-center space-x-1 cursor-pointer disabled:opacity-50"
           >
-            {relayState.isScanningTargets ? 'Escaneando...' : '↻ Atualizar'}
+            <IconActivity size={11} class={relayState.isScanningTargets ? 'animate-spin' : ''} />
+            <span>{relayState.isScanningTargets ? 'Escaneando...' : 'Atualizar'}</span>
           </button>
         </div>
 
         {#if relayState.discoveredTargets.length === 0}
-          <div class="p-2 text-zinc-500 text-[11px] font-mono text-center">
-            {relayState.isScanningTargets ? 'Buscando portas ativas...' : 'Nenhuma outra API encontrada.'}
+          <div class="px-3 py-2 rounded-lg bg-zinc-950/40 border border-zinc-800/60 text-center space-y-0.5">
+            <div class="text-[11px] font-medium text-zinc-300">
+              {relayState.isScanningTargets ? 'Buscando portas ativas...' : 'Nenhuma outra API detectada'}
+            </div>
+            <div class="text-[10px] text-zinc-500">
+              Inicie seu serviço (ex: :3000, :4000, :8000) e clique em Atualizar.
+            </div>
           </div>
         {:else}
           <div class="space-y-1 max-h-36 overflow-y-auto pr-1">
@@ -159,13 +204,18 @@
               {@const isSelected = relayState.config.targetPort === disc.port && relayState.config.targetHost === disc.host}
               <button
                 onclick={() => handleSelectDiscovered(disc)}
-                class="w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer {isSelected ? 'bg-indigo-600/20 text-indigo-200 border border-indigo-500/30' : 'hover:bg-zinc-800/70 text-zinc-300'}"
+                class="w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer {isSelected ? 'bg-zinc-800 text-zinc-100 font-medium border border-zinc-700' : 'hover:bg-zinc-800/60 text-zinc-300'}"
               >
-                <div class="flex items-center space-x-2">
-                  <span class="w-1.5 h-1.5 rounded-full {disc.isActive ? 'bg-emerald-400' : 'bg-zinc-500'}"></span>
-                  <span class="font-medium text-xs">{disc.label}</span>
+                <div class="flex items-center space-x-2 truncate">
+                  <span class="w-2 h-2 rounded-full shrink-0 {disc.isActive ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]' : 'bg-zinc-600'}"></span>
+                  <span class="text-xs truncate">{disc.label}</span>
                 </div>
-                <span class="font-mono text-[10px] text-zinc-400">:{disc.port}</span>
+                <div class="flex items-center space-x-1.5 shrink-0">
+                  <span class="font-mono text-[11px] text-zinc-400">:{disc.port}</span>
+                  {#if isSelected}
+                    <span class="text-emerald-400 text-xs font-bold ml-1">✓</span>
+                  {/if}
+                </div>
               </button>
             {/each}
           </div>
@@ -175,12 +225,12 @@
       <!-- Seção: Ambientes Salvos (ex: Staging / Docker) -->
       <div class="space-y-1.5 pt-1 border-t border-zinc-800/80">
         <div class="flex items-center justify-between text-zinc-400 pb-1">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-500">Ambientes Customizados</span>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Ambientes Salvos</span>
         </div>
 
         {#if relayState.savedEnvironments.length === 0}
-          <div class="p-2 text-zinc-600 text-[10px] italic text-center">
-            Nenhum ambiente customizado salvo.
+          <div class="p-2 text-zinc-500 text-[10px] italic text-center">
+            Nenhum ambiente salvo.
           </div>
         {:else}
           <div class="space-y-1 max-h-28 overflow-y-auto pr-1">
@@ -191,24 +241,29 @@
                 role="button"
                 tabindex="0"
                 onkeydown={(e) => { if (e.key === "Enter") selectTarget(env); }}
-                class="group w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer {isSelected ? 'bg-indigo-600/20 text-indigo-200 border border-indigo-500/30' : 'hover:bg-zinc-800/70 text-zinc-300'}"
+                class="group w-full text-left px-2.5 py-1.5 rounded-lg flex items-center justify-between transition-colors cursor-pointer {isSelected ? 'bg-zinc-800 text-zinc-100 font-medium border border-zinc-700' : 'hover:bg-zinc-800/60 text-zinc-300'}"
               >
                 <div class="flex items-center space-x-2 truncate">
-                  <IconServer size={12} class="text-zinc-500" />
-                  <span class="font-medium text-xs truncate">{env.name}</span>
+                  <span class="w-1.5 h-1.5 rounded-full shrink-0 {isSelected ? 'bg-indigo-400' : 'bg-zinc-600'}"></span>
+                  <span class="text-xs truncate">{env.name}</span>
+                  {#if env.name !== `${env.host}:${env.port}` && env.name !== `Localhost :${env.port}`}
+                    <span class="font-mono text-[10px] text-zinc-500 truncate">({env.host}:{env.port})</span>
+                  {/if}
                 </div>
-                <div class="flex items-center space-x-1.5 font-mono text-[10px] text-zinc-400">
-                  <span>{env.host}:{env.port}</span>
+                <div class="flex items-center space-x-1.5 font-mono text-[10px] text-zinc-400 shrink-0">
+                  {#if isSelected}
+                    <span class="text-emerald-400 text-xs font-bold mr-1">✓</span>
+                  {/if}
                   <button
                     onclick={(e) => openEditModal(env, e)}
-                    class="opacity-0 group-hover:opacity-100 hover:text-zinc-200 p-0.5"
+                    class="opacity-0 group-hover:opacity-100 hover:text-zinc-200 p-0.5 cursor-pointer"
                     title="Editar"
                   >
                     <IconPencil size={11} />
                   </button>
                   <button
                     onclick={(e) => handleDeleteTarget(env.id, e)}
-                    class="opacity-0 group-hover:opacity-100 hover:text-rose-400 p-0.5"
+                    class="opacity-0 group-hover:opacity-100 hover:text-rose-400 p-0.5 cursor-pointer"
                     title="Excluir"
                   >
                     <IconTrash size={11} />
@@ -221,10 +276,10 @@
 
         <button
           onclick={openCreateModal}
-          class="w-full mt-1.5 text-xs py-1.5 rounded-lg bg-zinc-800/80 hover:bg-zinc-800 text-zinc-300 hover:text-zinc-100 border border-zinc-700/80 transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+          class="w-full mt-2 text-xs py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700/80 text-zinc-200 hover:text-white border border-zinc-700 transition-colors flex items-center justify-center space-x-1.5 cursor-pointer font-medium"
         >
-          <IconPlus size={12} />
-          <span>+ Adicionar Alvo Manual</span>
+          <IconPlus size={13} class="text-indigo-400 shrink-0" />
+          <span>Adicionar Alvo Manual</span>
         </button>
       </div>
     </div>

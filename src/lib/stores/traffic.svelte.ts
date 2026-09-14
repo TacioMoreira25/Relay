@@ -608,7 +608,7 @@ class RelayState {
   addExchange(exchange: HttpExchange): void {
     const exists = this.exchanges.some(e => e.id === exchange.id);
     if (!exists) {
-      this.exchanges = [exchange, ...this.exchanges];
+      this.exchanges = [exchange, ...this.exchanges].slice(0, 150);
     } else {
       this.exchanges = this.exchanges.map(e => (e.id === exchange.id ? exchange : e));
     }

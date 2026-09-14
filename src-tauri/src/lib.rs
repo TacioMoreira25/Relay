@@ -94,6 +94,7 @@ pub fn run() {
             commands::get_proxy_config,
             commands::load_config_from_json,
             commands::scan_active_targets,
+            commands::check_target_active,
             commands::parse_collection_json,
             commands::get_session_jwts,
             commands::clear_session_jwts,
@@ -107,6 +108,8 @@ pub fn run() {
             commands::export_openapi,
             commands::get_security_findings,
             commands::clear_security_findings,
+            commands::run_active_probe,
+            commands::get_stride_report,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

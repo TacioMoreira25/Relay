@@ -25,11 +25,18 @@ async fn probe_port(host: &str, port: u16, listen_port: u16) -> bool {
     if port == listen_port {
         return false;
     }
-    let addr = format!("{}:{}", host, port);
-    match timeout(Duration::from_millis(100), TcpStream::connect(&addr)).await {
-        Ok(Ok(_stream)) => true,
-        _ => false,
+    let addrs = if host == "127.0.0.1" || host == "localhost" {
+        vec![format!("127.0.0.1:{}", port), format!("[::1]:{}", port)]
+    } else {
+        vec![format!("{}:{}", host, port)]
+    };
+
+    for addr in addrs {
+        if let Ok(Ok(_stream)) = timeout(Duration::from_millis(100), TcpStream::connect(&addr)).await {
+            return true;
+        }
     }
+    false
 }
 
 /// Realiza a varredura concorrente e RETORNA APENAS PORTAS QUE ESTÃO REALMENTE ATIVAS (is_active == true)

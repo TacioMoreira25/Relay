@@ -99,6 +99,23 @@ pub async fn scan_active_targets() -> Result<Vec<DiscoveredTarget>, String> {
     Ok(scan_local_targets().await)
 }
 
+/// Testa se um host e porta específicos estão ativos
+#[tauri::command]
+pub async fn check_target_active(host: String, port: u16) -> Result<bool, String> {
+    let addrs = if host == "127.0.0.1" || host == "localhost" {
+        vec![format!("127.0.0.1:{}", port), format!("[::1]:{}", port)]
+    } else {
+        vec![format!("{}:{}", host, port)]
+    };
+
+    for addr in addrs {
+        if let Ok(Ok(_)) = tokio::time::timeout(std::time::Duration::from_millis(150), tokio::net::TcpStream::connect(&addr)).await {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
 #[tauri::command]
 pub async fn get_session_jwts(
     state: State<'_, Arc<AppState>>,
@@ -694,7 +711,13 @@ pub async fn execute_replay(
         }
     }
 
-    state.exchanges.lock().push(exchange.clone());
+    {
+        let mut exchs = state.exchanges.lock();
+        if exchs.len() >= 150 {
+            exchs.remove(0);
+        }
+        exchs.push(exchange.clone());
+    }
     let _ = app.emit("relay:request", &exchange);
     let _ = app.emit("relay:response", &intercepted_res);
 
@@ -720,16 +743,93 @@ pub async fn create_ca_certificate() -> Result<GeneratedCa, String> {
 }
 
 #[tauri::command]
-pub async fn export_har(state: State<'_, Arc<AppState>>) -> Result<String, String> {
-    let exchanges = state.exchanges.lock().clone();
+pub async fn export_har(
+    state: State<'_, Arc<AppState>>,
+    sanitize: Option<bool>,
+) -> Result<String, String> {
+    let mut exchanges = state.exchanges.lock().clone();
+    if sanitize.unwrap_or(true) {
+        exchanges = crate::security::sanitize_exchanges(&exchanges);
+    }
     let json_val = export_to_har(&exchanges);
     serde_json::to_string_pretty(&json_val).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub async fn export_openapi(state: State<'_, Arc<AppState>>) -> Result<String, String> {
-    let exchanges = state.exchanges.lock().clone();
+pub async fn export_openapi(
+    state: State<'_, Arc<AppState>>,
+    sanitize: Option<bool>,
+) -> Result<String, String> {
+    let mut exchanges = state.exchanges.lock().clone();
+    if sanitize.unwrap_or(true) {
+        exchanges = crate::security::sanitize_exchanges(&exchanges);
+    }
     let config = state.config.lock().clone();
     let json_val = export_to_openapi(&exchanges, &config.target_host, config.target_port);
     serde_json::to_string_pretty(&json_val).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn run_active_probe(
+    app: AppHandle,
+    state: State<'_, Arc<AppState>>,
+    exchange_id: String,
+    probe_type: crate::security::ProbeType,
+    token_b: Option<String>,
+) -> Result<crate::security::ActiveProbeResult, String> {
+    let (target_host, target_port) = {
+        let cfg = state.config.lock();
+        (cfg.target_host.clone(), cfg.target_port)
+    };
+
+    let exchange = {
+        let lock = state.exchanges.lock();
+        lock.iter()
+            .find(|e| e.id == exchange_id)
+            .cloned()
+            .ok_or_else(|| format!("Requisição '{}' não encontrada no histórico.", exchange_id))?
+    };
+
+    let result = match probe_type {
+        crate::security::ProbeType::MassAssignment => {
+            crate::security::run_mass_assignment_probe(&target_host, target_port, &exchange).await
+        }
+        crate::security::ProbeType::AuthBypass => {
+            crate::security::run_auth_bypass_probe(&target_host, target_port, &exchange).await
+        }
+        crate::security::ProbeType::BolaAb => {
+            let tb = token_b.unwrap_or_default();
+            crate::security::run_bola_ab_probe(&target_host, target_port, &exchange, &tb).await
+        }
+        crate::security::ProbeType::HiddenVerbs => {
+            crate::security::run_hidden_verbs_probe(&target_host, target_port, &exchange).await
+        }
+        crate::security::ProbeType::OutdatedAssets => {
+            crate::security::run_hidden_verbs_probe(&target_host, target_port, &exchange).await
+        }
+        crate::security::ProbeType::StackTrace => {
+            crate::security::run_stack_trace_probe(&target_host, target_port, &exchange).await
+        }
+    };
+
+    // Se vulnerável, gera finding e emite para o frontend
+    if let Some(finding) = result.to_finding(&exchange_id) {
+        let mut sec_lock = state.security_findings.lock();
+        let _ = app.emit("relay:security_finding", &finding);
+        if sec_lock.len() >= 200 {
+            sec_lock.remove(0);
+        }
+        sec_lock.push(finding);
+    }
+
+    Ok(result)
+}
+
+#[tauri::command]
+pub async fn get_stride_report(
+    state: State<'_, Arc<AppState>>,
+) -> Result<crate::security::StrideReport, String> {
+    let exchanges = state.exchanges.lock().clone();
+    let findings = state.security_findings.lock().clone();
+    Ok(crate::security::generate_stride_report(&exchanges, &findings))
 }

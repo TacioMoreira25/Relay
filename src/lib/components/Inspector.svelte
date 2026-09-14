@@ -1,7 +1,19 @@
 <script lang="ts">
   import { relayState } from "$lib/stores/traffic.svelte";
   import ReplayModal from "$lib/components/ReplayModal.svelte";
-  import { IconCopy, IconCheck, IconPlay, IconActivity, IconCode, IconSplit, IconPlus, IconTrash, IconBookmark } from "$lib/components/icons";
+  import ActiveProbesModal from "$lib/components/security/ActiveProbesModal.svelte";
+  import {
+    IconCopy,
+    IconCheck,
+    IconPlay,
+    IconActivity,
+    IconCode,
+    IconSplit,
+    IconPlus,
+    IconTrash,
+    IconBookmark,
+    IconShield,
+  } from "$lib/components/icons";
 
   let {
     onOpenNewRequest = () => {},
@@ -15,6 +27,7 @@
   let compareTarget = $derived(relayState.diffCompareExchange);
   let copyFeedback = $state<string | null>(null);
   let isReplayOpen = $state<boolean>(false);
+  let isProbesOpen = $state<boolean>(false);
   let saveFeedback = $state<boolean>(false);
 
   function handleSaveToCollection(): void {
@@ -144,7 +157,17 @@
         </span>
       </div>
 
-      <div class="flex items-center space-x-3">
+      <div class="flex items-center space-x-2">
+        <!-- Testar Segurança Ativa -->
+        <button
+          onclick={() => (isProbesOpen = true)}
+          class="text-xs px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white font-medium flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+          title="Disparar testes ativos de segurança (Mass Assignment, BOLA, Auth Bypass, etc.) nesta rota"
+        >
+          <IconShield size={12} class="text-indigo-400" />
+          <span class="hidden sm:inline">Testar Segurança</span>
+        </button>
+
         <!-- Replay Action -->
         <button
           onclick={() => (isReplayOpen = true)}
@@ -533,5 +556,10 @@
   <!-- Replay Modal condicional -->
   {#if isReplayOpen}
     <ReplayModal bind:isOpen={isReplayOpen} {exchange} />
+  {/if}
+
+  <!-- Active Probes Modal condicional -->
+  {#if isProbesOpen}
+    <ActiveProbesModal bind:isOpen={isProbesOpen} {exchange} />
   {/if}
 </div>

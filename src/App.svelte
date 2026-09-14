@@ -197,7 +197,7 @@
 
 <main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 font-sans antialiased overflow-hidden select-none">
   <!-- TopBar Minimalista e Focada -->
-  <header class="h-12 border-b border-zinc-800 bg-zinc-950 px-3 flex items-center justify-between shrink-0 gap-2 overflow-x-auto no-scrollbar">
+  <header class="h-12 border-b border-zinc-800 bg-zinc-950 px-3 flex items-center justify-between shrink-0 gap-2 relative z-30">
     <!-- Brand & Project Switcher -->
     <div class="flex items-center space-x-2 shrink-0">
       <Logo />

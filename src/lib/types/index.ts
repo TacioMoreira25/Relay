@@ -136,3 +136,50 @@ export interface SecurityFinding {
   affectedResource: string;
   timestamp: number;
 }
+
+export type ProbeType =
+  | "mass_assignment"
+  | "auth_bypass"
+  | "bola_ab"
+  | "hidden_verbs"
+  | "outdated_assets"
+  | "stack_trace";
+
+export interface ActiveProbeResult {
+  id: string;
+  probeType: ProbeType;
+  targetUri: string;
+  targetMethod: string;
+  vulnerable: boolean;
+  title: string;
+  details: string;
+  statusCode?: number;
+  evidence?: string;
+  remediation: string;
+  timestamp: number;
+}
+
+export type StrideCategory =
+  | "spoofing"
+  | "tampering"
+  | "repudiation"
+  | "information_disclosure"
+  | "denial_of_service"
+  | "elevation_of_privilege";
+
+export interface StrideThreat {
+  category: StrideCategory;
+  title: string;
+  description: string;
+  affectedEndpoints: string[];
+  riskLevel: "critical" | "high" | "medium" | "low";
+  mitigation: string;
+}
+
+export interface StrideReport {
+  totalThreats: number;
+  highRiskCount: number;
+  threats: StrideThreat[];
+  trustBoundaries: string[];
+  timestamp: number;
+}
