@@ -118,13 +118,13 @@
   <!-- Botão Discreto e Objetivo no Header -->
   <button
     onclick={() => (isOpen = !isOpen)}
-    class="flex items-center space-x-2 text-xs px-2.5 py-1 rounded-md bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-200 transition-colors cursor-pointer shadow-xs"
+    class="flex items-center space-x-1.5 text-xs px-2 py-1 rounded-md bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-200 transition-colors cursor-pointer shadow-xs whitespace-nowrap shrink-0"
     title="Alterne a porta ou host da sua API de destino"
   >
-    <span class="w-2 h-2 rounded-full {relayState.activeTarget?.isActive ?? true ? 'bg-emerald-400' : 'bg-zinc-500'}"></span>
-    <span class="font-medium text-[11px] text-zinc-400">API Alvo:</span>
-    <span class="font-mono text-zinc-100 font-bold">{relayState.config.targetHost}:{relayState.config.targetPort}</span>
-    <span class="text-zinc-500 text-[10px]">▼</span>
+    <IconServer size={13} class="text-zinc-400 shrink-0" />
+    <span class="font-medium text-[11px] text-zinc-400 hidden xl:inline">API Alvo:</span>
+    <span class="font-mono text-zinc-200 font-semibold">{relayState.config.targetHost}:{relayState.config.targetPort}</span>
+    <span class="text-zinc-500 text-[10px] ml-0.5">▾</span>
   </button>
 
   <!-- Dropdown de Portas & Ambientes -->

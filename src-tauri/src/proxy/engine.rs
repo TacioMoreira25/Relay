@@ -415,6 +415,19 @@ pub async fn handle_proxy_request(
                 if let Some(item) = exchs.iter_mut().find(|e| e.id == req_id) {
                     item.response = Some(intercepted_res.clone());
                     item.status = "completed".to_string();
+
+                    // Auditoria Passiva de Segurança Contínua (Shift-Left DAST)
+                    let findings = crate::security::audit_exchange(item);
+                    if !findings.is_empty() {
+                        let mut sec_lock = state.security_findings.lock();
+                        for f in findings {
+                            let _ = app.emit("relay:security_finding", &f);
+                            if sec_lock.len() >= 200 {
+                                sec_lock.remove(0);
+                            }
+                            sec_lock.push(f);
+                        }
+                    }
                 }
             }
 

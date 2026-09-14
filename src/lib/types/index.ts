@@ -114,3 +114,25 @@ export interface GeneratedCa {
   keyPem: string;
   expiresAt: number;
 }
+
+export type FindingSeverity = "critical" | "high" | "medium" | "low" | "info";
+
+export type FindingCategory =
+  | "cors"
+  | "security_headers"
+  | "data_exposure"
+  | "tech_leak"
+  | "jwt_vulnerability"
+  | "missing_auth";
+
+export interface SecurityFinding {
+  id: string;
+  exchangeId: string;
+  title: string;
+  description: string;
+  severity: FindingSeverity;
+  category: FindingCategory;
+  remediation: string;
+  affectedResource: string;
+  timestamp: number;
+}

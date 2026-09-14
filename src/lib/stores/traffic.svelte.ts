@@ -6,6 +6,9 @@ import type {
   SavedRequestTemplate,
   TargetEnvironment,
   DiscoveredTarget,
+  SecurityFinding,
+  FindingSeverity,
+  FindingCategory,
 } from "$lib/types";
 
 export interface ProjectData {
@@ -22,6 +25,31 @@ const STORAGE_PROJECTS_KEY = "relay_projects_data";
 const STORAGE_ACTIVE_PROJECT_KEY = "relay_active_project_id";
 const STORAGE_EXCHANGES_KEY = "relay_exchanges_history";
 const STORAGE_JWTS_KEY = "relay_saved_jwts";
+const STORAGE_FINDINGS_KEY = "relay_security_findings";
+
+function loadFindingsFromStorage(): SecurityFinding[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(STORAGE_FINDINGS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error("Falha ao carregar achados de segurança do LocalStorage:", e);
+  }
+  return [];
+}
+
+function saveFindingsToStorage(findings: SecurityFinding[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    const limited = findings.slice(0, 200);
+    localStorage.setItem(STORAGE_FINDINGS_KEY, JSON.stringify(limited));
+  } catch (e) {
+    console.error("Falha ao salvar achados de segurança:", e);
+  }
+}
 
 function loadJwtsFromStorage(): ExtractedJwt[] {
   if (typeof window === "undefined") return [];
@@ -194,8 +222,12 @@ class RelayState {
   extractedVariables = $state<Record<string, string>>({});
   jwts = $state<ExtractedJwt[]>(loadJwtsFromStorage());
   selectedJwt = $state<ExtractedJwt | null>(null);
+  securityFindings = $state<SecurityFinding[]>(loadFindingsFromStorage());
+  selectedFinding = $state<SecurityFinding | null>(null);
+  findingSeverityFilter = $state<string>("ALL");
+  findingCategoryFilter = $state<string>("ALL");
   isProxyRunning = $state<boolean>(false);
-  activeView = $state<"traffic" | "jwt">("traffic");
+  activeView = $state<"traffic" | "jwt" | "security">("traffic");
   
   searchQuery = $state<string>("");
   methodFilter = $state<string>("ALL");
@@ -331,6 +363,41 @@ class RelayState {
     this.exchanges.filter(e => e.status === "failed" || (e.response && e.response.statusCode >= 400)).length
   );
   totalJwts = $derived(this.jwts.length);
+  totalFindings = $derived(this.securityFindings.length);
+  criticalFindingsCount = $derived(
+    this.securityFindings.filter(f => f.severity === "critical" || f.severity === "high").length
+  );
+  securityScore = $derived.by((): number => {
+    if (this.securityFindings.length === 0) return 100;
+    let penalty = 0;
+    for (const f of this.securityFindings) {
+      if (f.severity === "critical") penalty += 25;
+      else if (f.severity === "high") penalty += 15;
+      else if (f.severity === "medium") penalty += 8;
+      else if (f.severity === "low") penalty += 3;
+    }
+    return Math.max(0, 100 - penalty);
+  });
+
+  filteredFindings = $derived.by((): SecurityFinding[] => {
+    let list = this.securityFindings;
+    if (this.findingSeverityFilter !== "ALL") {
+      list = list.filter(f => f.severity.toLowerCase() === this.findingSeverityFilter.toLowerCase());
+    }
+    if (this.findingCategoryFilter !== "ALL") {
+      list = list.filter(f => f.category.toLowerCase() === this.findingCategoryFilter.toLowerCase());
+    }
+    if (this.searchQuery.trim() && this.activeView === "security") {
+      const q = this.searchQuery.toLowerCase().trim();
+      list = list.filter(f =>
+        f.title.toLowerCase().includes(q) ||
+        f.description.toLowerCase().includes(q) ||
+        f.affectedResource.toLowerCase().includes(q) ||
+        f.remediation.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  });
 
   filteredExchanges = $derived.by((): HttpExchange[] => {
     const list = this.exchanges;
@@ -733,6 +800,32 @@ class RelayState {
     this.jwts = [];
     this.selectedJwt = null;
     saveJwtsToStorage(this.jwts);
+  }
+
+  addSecurityFinding(finding: SecurityFinding): void {
+    const exists = this.securityFindings.some(f => f.id === finding.id);
+    if (!exists) {
+      this.securityFindings = [finding, ...this.securityFindings].slice(0, 200);
+      saveFindingsToStorage(this.securityFindings);
+      if (!this.selectedFinding) {
+        this.selectedFinding = finding;
+      }
+    }
+  }
+
+  selectFinding(finding: SecurityFinding | null): void {
+    this.selectedFinding = finding;
+  }
+
+  clearSecurityFindings(): void {
+    this.securityFindings = [];
+    this.selectedFinding = null;
+    saveFindingsToStorage([]);
+    try {
+      invoke("clear_security_findings").catch(e => console.warn("Erro ao limpar achados no Rust:", e));
+    } catch {
+      // Ignora erro fora do runtime Tauri
+    }
   }
 }
 

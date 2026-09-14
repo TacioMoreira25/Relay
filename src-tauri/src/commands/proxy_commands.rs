@@ -21,11 +21,14 @@ use crate::state::{
     extract_jwts_from_body, extract_jwts_from_headers, ExtractedJwt, SessionState,
 };
 
+use crate::security::SecurityFinding;
+
 pub struct AppState {
     pub proxy_server: Mutex<Option<ProxyServer>>,
     pub session: SessionState,
     pub exchanges: Mutex<Vec<HttpExchange>>,
     pub config: Mutex<ProxyConfig>,
+    pub security_findings: Mutex<Vec<SecurityFinding>>,
 }
 
 #[tauri::command]
@@ -132,6 +135,21 @@ pub async fn delete_exchanges(state: State<'_, Arc<AppState>>, ids: Vec<String>)
     let id_set: std::collections::HashSet<String> = ids.into_iter().collect();
     let mut exchs = state.exchanges.lock();
     exchs.retain(|e| !id_set.contains(&e.id));
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_security_findings(
+    state: State<'_, Arc<AppState>>,
+) -> Result<Vec<SecurityFinding>, String> {
+    Ok(state.security_findings.lock().clone())
+}
+
+#[tauri::command]
+pub async fn clear_security_findings(
+    state: State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    state.security_findings.lock().clear();
     Ok(())
 }
 
@@ -679,6 +697,19 @@ pub async fn execute_replay(
     state.exchanges.lock().push(exchange.clone());
     let _ = app.emit("relay:request", &exchange);
     let _ = app.emit("relay:response", &intercepted_res);
+
+    // Auditoria Passiva de Segurança
+    let findings = crate::security::audit_exchange(&exchange);
+    if !findings.is_empty() {
+        let mut sec_lock = state.security_findings.lock();
+        for f in findings {
+            let _ = app.emit("relay:security_finding", &f);
+            if sec_lock.len() >= 200 {
+                sec_lock.remove(0);
+            }
+            sec_lock.push(f);
+        }
+    }
 
     Ok(exchange)
 }

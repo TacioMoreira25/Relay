@@ -6,6 +6,7 @@
   import ReplayModal from "$lib/components/ReplayModal.svelte";
   import ProjectModal from "$lib/components/ProjectModal.svelte";
   import JwtManager from "$lib/components/JwtManager.svelte";
+  import SecurityDashboard from "$lib/components/security/SecurityDashboard.svelte";
   import EnvironmentSelector from "$lib/components/EnvironmentSelector.svelte";
   import ProjectSelector from "$lib/components/ProjectSelector.svelte";
   import ChaosPopover from "$lib/components/ChaosPopover.svelte";
@@ -18,9 +19,17 @@
     IconSquare,
     IconHelpCircle,
     IconPlus,
+    IconKey,
+    IconAlertTriangle,
   } from "$lib/components/icons";
   import { relayState } from "$lib/stores/traffic.svelte";
-  import type { HttpExchange, InterceptedResponse, ExtractedJwt, SavedRequestTemplate } from "$lib/types";
+  import type {
+    HttpExchange,
+    InterceptedResponse,
+    ExtractedJwt,
+    SavedRequestTemplate,
+    SecurityFinding,
+  } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
   import { listen, type UnlistenFn } from "@tauri-apps/api/event";
   import { onMount } from "svelte";
@@ -96,6 +105,13 @@
       if (tokens && tokens.length > 0) {
         relayState.jwts = tokens;
       }
+
+      const findings = await invoke<SecurityFinding[]>("get_security_findings");
+      if (findings && findings.length > 0) {
+        for (const f of findings) {
+          relayState.addSecurityFinding(f);
+        }
+      }
     } catch (e) {
       console.error("Erro na inicialização:", e);
     }
@@ -122,6 +138,7 @@
     let unlistenRes: UnlistenFn;
     let unlistenErr: UnlistenFn;
     let unlistenJwt: UnlistenFn;
+    let unlistenSec: UnlistenFn;
 
     listen<HttpExchange>("relay:request", (event) => {
       relayState.addExchange(event.payload);
@@ -138,6 +155,10 @@
     listen<ExtractedJwt>("relay:jwt", (event) => {
       relayState.addJwt(event.payload);
     }).then((unlisten) => (unlistenJwt = unlisten));
+
+    listen<SecurityFinding>("relay:security_finding", (event) => {
+      relayState.addSecurityFinding(event.payload);
+    }).then((unlisten) => (unlistenSec = unlisten));
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
@@ -168,6 +189,7 @@
       unlistenRes?.();
       unlistenErr?.();
       unlistenJwt?.();
+      unlistenSec?.();
       window.removeEventListener("keydown", handleKeyDown);
     };
   });
@@ -175,9 +197,9 @@
 
 <main class="h-screen w-screen flex flex-col bg-zinc-950 text-zinc-100 font-sans antialiased overflow-hidden select-none">
   <!-- TopBar Minimalista e Focada -->
-  <header class="h-12 border-b border-zinc-800 bg-zinc-950 px-4 flex items-center justify-between shrink-0">
+  <header class="h-12 border-b border-zinc-800 bg-zinc-950 px-3 flex items-center justify-between shrink-0 gap-2 overflow-x-auto no-scrollbar">
     <!-- Brand & Project Switcher -->
-    <div class="flex items-center space-x-3">
+    <div class="flex items-center space-x-2 shrink-0">
       <Logo />
 
       <div class="h-4 w-[1px] bg-zinc-800"></div>
@@ -190,13 +212,13 @@
     </div>
 
     <!-- Navigation Tabs & Target Selector -->
-    <div class="flex items-center space-x-3">
-      <nav class="flex items-center space-x-1 bg-zinc-900/80 p-0.5 rounded-lg border border-zinc-800 text-xs">
+    <div class="flex items-center space-x-2 shrink-0">
+      <nav class="flex items-center space-x-0.5 bg-zinc-900/80 p-0.5 rounded-lg border border-zinc-800 text-xs shrink-0">
         <button
           onclick={() => (relayState.activeView = "traffic")}
-          class="px-3 py-1 rounded-md transition-all flex items-center space-x-1.5 {relayState.activeView === 'traffic' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 {relayState.activeView === 'traffic' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
         >
-          <IconActivity size={13} class="text-indigo-400" />
+          <IconActivity size={13} class="text-indigo-400 shrink-0" />
           <span>Tráfego</span>
           {#if relayState.totalRequests > 0}
             <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-700/80 text-zinc-300 font-mono">
@@ -207,13 +229,28 @@
 
         <button
           onclick={() => (relayState.activeView = "jwt")}
-          class="px-3 py-1 rounded-md transition-all flex items-center space-x-1.5 {relayState.activeView === 'jwt' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 {relayState.activeView === 'jwt' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          title="Sessão & Tokens JWT"
         >
-          <IconShield size={13} />
-          <span>Sessão & JWT</span>
+          <IconKey size={13} class="text-amber-400 shrink-0" />
+          <span>JWT</span>
           {#if relayState.totalJwts > 0}
-            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-500/30 text-indigo-300 font-mono font-medium">
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-mono font-medium">
               {relayState.totalJwts}
+            </span>
+          {/if}
+        </button>
+
+        <button
+          onclick={() => (relayState.activeView = "security")}
+          class="px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 {relayState.activeView === 'security' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          title="Auditoria Shift-Left DAST"
+        >
+          <IconShield size={13} class="shrink-0 {relayState.criticalFindingsCount > 0 ? 'text-rose-400' : 'text-emerald-400'}" />
+          <span>Segurança</span>
+          {#if relayState.totalFindings > 0}
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-medium {relayState.criticalFindingsCount > 0 ? 'bg-rose-500/30 text-rose-300' : 'bg-emerald-500/30 text-emerald-300'}">
+              {relayState.totalFindings}
             </span>
           {/if}
         </button>
@@ -224,24 +261,24 @@
     </div>
 
     <!-- Actions & Controls -->
-    <div class="flex items-center space-x-2">
+    <div class="flex items-center space-x-1.5 shrink-0">
       <!-- Simulador de Caos & Falhas (Acesso Rápido em 1 Clique) -->
       <ChaosPopover />
 
       <!-- Nova Requisição Direta -->
       <button
         onclick={() => { activeTestingTemplate = null; isNewRequestOpen = true; }}
-        class="text-xs px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs"
+        class="text-xs px-2 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs whitespace-nowrap shrink-0"
         title="Criar e disparar nova requisição HTTP direta (Ctrl+N)"
       >
-        <IconPlus size={13} class="text-indigo-400" />
-        <span class="text-[11px] font-medium">Nova Requisição</span>
+        <IconPlus size={13} class="text-indigo-400 shrink-0" />
+        <span class="text-[11px] font-medium hidden md:inline">Nova Requisição</span>
       </button>
 
       <!-- Ações Secundárias -->
       <button
         onclick={() => (isExportOpen = true)}
-        class="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+        class="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer shrink-0"
         title="Exportar HAR / OpenAPI ou Certificados HTTPS (Ctrl+E)"
       >
         <IconDownload size={14} />
@@ -249,7 +286,7 @@
 
       <button
         onclick={() => (isTipsOpen = true)}
-        class="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+        class="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer shrink-0"
         title="Guia Rápido & Atalhos (Ctrl+/)"
       >
         <IconHelpCircle size={14} />
@@ -258,14 +295,14 @@
       <!-- Botão Iniciar Proxy -->
       <button
         onclick={toggleProxy}
-        class="text-xs px-3.5 py-1.5 rounded-md font-medium flex items-center space-x-1.5 transition-all shadow-md cursor-pointer {relayState.isProxyRunning ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold shadow-[0_0_12px_rgba(16,185,129,0.4)]' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}"
+        class="text-xs px-3 py-1.5 rounded-md font-medium flex items-center space-x-1.5 transition-all shadow-md cursor-pointer whitespace-nowrap shrink-0 {relayState.isProxyRunning ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold shadow-[0_0_12px_rgba(16,185,129,0.4)]' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}"
         title="Atalho: Ctrl+P"
       >
         {#if relayState.isProxyRunning}
-          <IconSquare size={12} class="fill-current" />
+          <IconSquare size={12} class="fill-current shrink-0" />
           <span>Ativo (:{relayState.config.listenPort})</span>
         {:else}
-          <IconPlay size={12} class="fill-current" />
+          <IconPlay size={12} class="fill-current shrink-0" />
           <span>Iniciar Proxy</span>
         {/if}
       </button>
@@ -284,9 +321,11 @@
       </div>
 
       <!-- Divisor Redimensionável (Splitter Handle) -->
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
       <div
         role="separator"
-        tabindex="0"
+        aria-orientation="vertical"
+        tabindex="-1"
         onmousedown={startResize}
         class="w-1 h-full hover:w-1 bg-zinc-800/80 hover:bg-indigo-500/80 transition-colors cursor-col-resize shrink-0 relative group select-none {isResizingSidebar ? 'bg-indigo-500' : ''}"
         title="Clique e arraste para redimensionar a barra lateral"
@@ -298,9 +337,12 @@
       <div class="flex-1 h-full bg-zinc-950 min-w-0 overflow-hidden">
         <Inspector onOpenNewRequest={() => { activeTestingTemplate = null; isNewRequestOpen = true; }} onToggleProxy={toggleProxy} />
       </div>
-    {:else}
+    {:else if relayState.activeView === "jwt"}
       <!-- JWT Manager View -->
       <JwtManager />
+    {:else if relayState.activeView === "security"}
+      <!-- Shift-Left Security DAST Dashboard -->
+      <SecurityDashboard />
     {/if}
   </div>
 

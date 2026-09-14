@@ -278,16 +278,17 @@
   <!-- Header Compacto e Minimalista -->
   <div class="p-2.5 border-b border-zinc-800/80 bg-zinc-900/30 space-y-2">
     <!-- Linha 1: Abas Principais + Botões de Ação -->
-    <div class="flex items-center justify-between space-x-2">
-      <div class="flex items-center space-x-1 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800/80 text-xs flex-1">
+    <div class="flex items-center justify-between gap-1.5 min-w-0">
+      <div class="flex items-center space-x-0.5 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800/80 text-xs flex-1 min-w-0">
         <button
           onclick={() => (relayState.sidebarTab = "collection")}
-          class="flex-1 py-1 rounded-md transition-all flex items-center justify-center space-x-1.5 {relayState.sidebarTab === 'collection' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="flex-1 min-w-0 py-1 px-1.5 rounded-md transition-all flex items-center justify-center space-x-1 whitespace-nowrap {relayState.sidebarTab === 'collection' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          title="Coleção de rotas e templates"
         >
-          <IconBookmark size={12} class={relayState.totalTemplates > 0 ? "text-amber-400" : ""} />
-          <span>Coleção</span>
+          <IconBookmark size={12} class="shrink-0 {relayState.totalTemplates > 0 ? 'text-amber-400' : ''}" />
+          <span class="truncate">Coleção</span>
           {#if relayState.totalTemplates > 0}
-            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-mono font-medium">
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 font-mono font-medium shrink-0">
               {relayState.totalTemplates}
             </span>
           {/if}
@@ -295,12 +296,13 @@
 
         <button
           onclick={() => (relayState.sidebarTab = "history")}
-          class="flex-1 py-1 rounded-md transition-all flex items-center justify-center space-x-1.5 {relayState.sidebarTab === 'history' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="flex-1 min-w-0 py-1 px-1.5 rounded-md transition-all flex items-center justify-center space-x-1 whitespace-nowrap {relayState.sidebarTab === 'history' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          title="Histórico de tráfego interceptado"
         >
-          <IconHistory size={12} />
-          <span>Histórico</span>
+          <IconHistory size={12} class="shrink-0" />
+          <span class="truncate">Histórico</span>
           {#if relayState.totalRequests > 0}
-            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-700/80 text-zinc-300 font-mono">
+            <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-700/80 text-zinc-300 font-mono shrink-0">
               {relayState.totalRequests}
             </span>
           {/if}
@@ -317,14 +319,14 @@
           onchange={handleImportCollectionFile}
         />
         
-        <div class="flex items-center space-x-1">
+        <div class="flex items-center space-x-1 shrink-0">
           <!-- Botão para Ver Modelo JSON de Exemplo -->
           <button
             onclick={() => (showCollectionExampleModal = true)}
             class="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-amber-400/80 hover:text-amber-300 transition-colors cursor-pointer shrink-0"
             title="Ver e Salvar Modelo JSON de Coleção para a IA"
           >
-            <IconFileJson size={14} />
+            <IconFileJson size={13} />
           </button>
 
           <!-- Botão de Importar Arquivo -->
@@ -333,7 +335,7 @@
             class="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white transition-colors cursor-pointer shrink-0"
             title="Importar Arquivo JSON (OpenAPI / Swagger / Postman)"
           >
-            <IconDownload size={14} class="rotate-180" />
+            <IconDownload size={13} class="rotate-180" />
           </button>
         </div>
       {:else if relayState.totalRequests > 0}
@@ -343,7 +345,7 @@
             class="p-1.5 rounded-lg border transition-colors cursor-pointer shrink-0 {isSelectMode ? 'bg-indigo-600/30 border-indigo-500/60 text-indigo-300' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-zinc-200'}"
             title={isSelectMode ? "Sair do modo de seleção" : "Selecionar requisições para apagar"}
           >
-            <IconCheck size={14} />
+            <IconCheck size={13} />
           </button>
 
           <button
@@ -351,7 +353,7 @@
             class="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer shrink-0"
             title="Limpar Todo o Histórico (Ctrl+L)"
           >
-            <IconTrash size={14} />
+            <IconTrash size={13} />
           </button>
         </div>
       {/if}
@@ -369,11 +371,11 @@
     </div>
 
     <!-- Linha 3: Filtro por Método HTTP -->
-    <div class="flex items-center space-x-1 font-mono text-[10px] select-none">
+    <div class="grid grid-cols-6 gap-1 font-mono text-[10px] select-none w-full">
       {#each methods as m}
         <button
           onclick={() => (relayState.methodFilter = m)}
-          class="px-2 py-0.5 rounded border transition-all cursor-pointer {getMethodPillActiveStyle(m)}"
+          class="py-0.5 rounded border transition-all cursor-pointer text-center truncate {getMethodPillActiveStyle(m)}"
         >
           {m}
         </button>
@@ -412,11 +414,12 @@
           </div>
         </div>
       {:else}
-        <div class="flex items-center justify-between text-[10px] select-none pt-0.5">
-          <div class="flex items-center space-x-0.5 bg-zinc-950 p-0.5 rounded-md border border-zinc-800/80 font-mono">
+        <div class="flex items-center justify-between text-[10px] select-none pt-0.5 gap-1 min-w-0">
+          <div class="flex items-center space-x-0.5 bg-zinc-950 p-0.5 rounded-md border border-zinc-800/80 font-mono shrink-0">
             <button
               onclick={() => (relayState.historySourceFilter = "ALL")}
               class="px-1.5 py-0.5 rounded transition-colors cursor-pointer {relayState.historySourceFilter === 'ALL' ? 'bg-zinc-800 text-zinc-100 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
+              title="Todas as requisições capturadas e manuais"
             >
               Todas
             </button>
@@ -425,23 +428,23 @@
               class="px-1.5 py-0.5 rounded transition-colors cursor-pointer {relayState.historySourceFilter === 'MANUAL' ? 'bg-indigo-600/30 text-indigo-300 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
               title="Apenas requisições disparadas manualmente pelo Replay"
             >
-              Manuais
+              Manual
             </button>
             <button
               onclick={() => (relayState.historySourceFilter = "AUTO")}
               class="px-1.5 py-0.5 rounded transition-colors cursor-pointer {relayState.historySourceFilter === 'AUTO' ? 'bg-zinc-800 text-zinc-100 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
               title="Apenas requisições capturadas do navegador/aplicação"
             >
-              Capturadas
+              Auto
             </button>
           </div>
 
           <button
             onclick={() => (relayState.hidePolling = !relayState.hidePolling)}
-            class="px-2 py-1 rounded-md text-[10px] font-mono transition-all cursor-pointer flex items-center space-x-1 border {relayState.hidePolling ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 font-medium' : 'bg-zinc-950 border-zinc-800/80 text-zinc-500 hover:text-zinc-300'}"
+            class="px-2 py-1 rounded-md text-[10px] font-mono transition-all cursor-pointer flex items-center space-x-1 border shrink-0 {relayState.hidePolling ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 font-medium' : 'bg-zinc-950 border-zinc-800/80 text-zinc-500 hover:text-zinc-300'}"
             title="Oculta requisições repetidas idênticas em curto intervalo (polling contínuo do frontend)"
           >
-            <span>{relayState.hidePolling ? "Polling Oculto" : "Ocultar Polling"}</span>
+            <span>{relayState.hidePolling ? "Sem Polling" : "Ocultar Polling"}</span>
           </button>
         </div>
       {/if}
@@ -587,9 +590,20 @@
                   {items.length}
                 </span>
               </div>
-              <span class="text-[10px] text-zinc-500 transition-transform {collapsedFolders[folderName] ? '' : 'rotate-90'}">
-                ▶
-              </span>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                class="text-zinc-500 transition-transform shrink-0 ml-1.5 {collapsedFolders[folderName] ? '' : 'rotate-90'}"
+              >
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
             </button>
 
             <!-- Itens dentro da Pasta -->

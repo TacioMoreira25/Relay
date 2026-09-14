@@ -23,3 +23,4 @@ export { default as IconSplit } from "./Split.svelte";
 export { default as IconServer } from "./Server.svelte";
 export { default as IconPencil } from "./Pencil.svelte";
 export { default as IconFolder } from "./Folder.svelte";
+export { default as IconAlertTriangle } from "./AlertTriangle.svelte";

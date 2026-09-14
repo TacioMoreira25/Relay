@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod proxy;
+pub mod security;
 pub mod state;
 
 use commands::AppState;
@@ -27,6 +28,7 @@ pub fn run() {
         session: SessionState::new(),
         exchanges: Mutex::new(Vec::new()),
         config: Mutex::new(ProxyConfig::default()),
+        security_findings: Mutex::new(Vec::new()),
     });
 
     tauri::Builder::default()
@@ -103,6 +105,8 @@ pub fn run() {
             commands::create_ca_certificate,
             commands::export_har,
             commands::export_openapi,
+            commands::get_security_findings,
+            commands::clear_security_findings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
