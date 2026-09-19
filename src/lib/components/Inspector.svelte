@@ -2,6 +2,7 @@
   import { relayState } from "$lib/stores/traffic.svelte";
   import ReplayModal from "$lib/components/ReplayModal.svelte";
   import ActiveProbesModal from "$lib/components/security/ActiveProbesModal.svelte";
+  import JsonViewer from "$lib/components/JsonViewer.svelte";
   import {
     IconCopy,
     IconCheck,
@@ -303,30 +304,15 @@
                 <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                   Payload Body ({exchange.request.sizeBytes} bytes)
                 </span>
-                <div class="flex items-center space-x-2">
-                  {#if parsed.isJson}
-                    <span class="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono">
-                      JSON
-                    </span>
-                  {/if}
-                  <button
-                    onclick={() => copyToClipboard(exchange?.request.body || "", "req_body")}
-                    class="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center space-x-1 cursor-pointer"
-                  >
-                    {#if copyFeedback === "req_body"}
-                      <IconCheck size={12} class="text-emerald-400" />
-                      <span class="text-emerald-400">Copiado</span>
-                    {:else}
-                      <IconCopy size={12} />
-                      <span>Copiar</span>
-                    {/if}
-                  </button>
-                </div>
               </div>
 
-              <div class="border border-zinc-800/80 rounded-lg overflow-hidden bg-zinc-900/30 p-3">
-                <pre class="text-xs font-mono text-zinc-200 overflow-x-auto whitespace-pre-wrap leading-relaxed break-all w-full select-text">{parsed.formatted}</pre>
-              </div>
+              {#if parsed.isJson}
+                <JsonViewer code={exchange.request.body} />
+              {:else}
+                <div class="border border-zinc-800/80 rounded-lg overflow-hidden bg-zinc-900/30 p-3">
+                  <pre class="text-xs font-mono text-zinc-200 overflow-x-auto whitespace-pre-wrap leading-relaxed break-all w-full select-text">{parsed.formatted}</pre>
+                </div>
+              {/if}
             </div>
           {/if}
         </div>
@@ -435,30 +421,15 @@
                   <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
                     Response Body ({res.sizeBytes} bytes)
                   </span>
-                  <div class="flex items-center space-x-2">
-                    {#if parsedRes.isJson}
-                      <span class="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono">
-                        JSON
-                      </span>
-                    {/if}
-                    <button
-                      onclick={() => copyToClipboard(res.body || "", "res_body")}
-                      class="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors flex items-center space-x-1 cursor-pointer"
-                    >
-                      {#if copyFeedback === "res_body"}
-                        <IconCheck size={12} class="text-emerald-400" />
-                        <span class="text-emerald-400">Copiado</span>
-                      {:else}
-                        <IconCopy size={12} />
-                        <span>Copiar</span>
-                      {/if}
-                    </button>
-                  </div>
                 </div>
 
-                <div class="border border-zinc-800/80 rounded-lg overflow-hidden bg-zinc-900/30 p-3">
-                  <pre class="text-xs font-mono text-zinc-200 overflow-x-auto whitespace-pre-wrap leading-relaxed break-all w-full select-text">{parsedRes.formatted}</pre>
-                </div>
+                {#if parsedRes.isJson}
+                  <JsonViewer code={res.body} />
+                {:else}
+                  <div class="border border-zinc-800/80 rounded-lg overflow-hidden bg-zinc-900/30 p-3">
+                    <pre class="text-xs font-mono text-zinc-200 overflow-x-auto whitespace-pre-wrap leading-relaxed break-all w-full select-text">{parsedRes.formatted}</pre>
+                  </div>
+                {/if}
               </div>
             {/if}
           </div>

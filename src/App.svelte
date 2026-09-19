@@ -275,7 +275,7 @@
         <span class="font-medium hidden lg:inline">Nova Requisição</span>
       </button>
 
-      <!-- Ações Secundárias -->
+      <!-- Ações Secundárias em formato de ícone com tooltip -->
       <button
         onclick={() => (isExportOpen = true)}
         class="h-8 w-8 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors flex items-center justify-center cursor-pointer shrink-0 active:scale-[0.98]"

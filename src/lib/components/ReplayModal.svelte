@@ -63,6 +63,18 @@
       ];
       body = "{\n  \n}";
     }
+
+    const handleGlobalKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        sendReplay();
+      } else if (e.key === "Escape") {
+        closeModal();
+      }
+    };
+
+    window.addEventListener("keydown", handleGlobalKey);
+    return () => window.removeEventListener("keydown", handleGlobalKey);
   });
 
   function closeModal(): void {
@@ -452,10 +464,11 @@
         <button
           onclick={sendReplay}
           disabled={isSending}
-          class="text-xs px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap"
+          class="text-xs px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap active:scale-[0.98]"
+          title="Atalho: Ctrl+Enter"
         >
           <IconPlay size={11} class="fill-current" />
-          <span>{isSending ? 'Enviando...' : 'Executar Replay'}</span>
+          <span>{isSending ? 'Enviando...' : 'Executar Replay [Ctrl+Enter]'}</span>
         </button>
       </div>
     </div>

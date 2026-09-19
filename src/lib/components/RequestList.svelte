@@ -558,8 +558,14 @@
             </div>
           </div>
 
-          <div class="text-[11px] font-mono text-zinc-300 truncate" title={exchange.request.uri}>
-            {exchange.request.uri}
+          <div class="flex items-center text-[11px] truncate min-w-0" title={exchange.request.uri}>
+            {#if exchange.request.uri.includes("?")}
+              {@const parts = exchange.request.uri.split("?")}
+              <span class="font-sans font-medium text-zinc-200 truncate">{parts[0]}</span>
+              <span class="font-mono text-[10px] text-zinc-500 truncate ml-0.5">?{parts.slice(1).join("?")}</span>
+            {:else}
+              <span class="font-sans font-medium text-zinc-200 truncate">{exchange.request.uri}</span>
+            {/if}
           </div>
         </div>
       {/each}
