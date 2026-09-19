@@ -146,20 +146,20 @@
   <!-- Botão Discreto e Objetivo no Header -->
   <button
     onclick={handleToggleOpen}
-    class="flex items-center space-x-2 text-xs px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 text-zinc-200 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0"
+    class="h-8 flex items-center space-x-2 text-xs px-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 text-zinc-200 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0 active:scale-[0.98]"
     title={isTargetActive ? `Alvo ativo e respondendo em ${relayState.config.targetHost}:${relayState.config.targetPort}` : `Alvo configurado: ${relayState.config.targetHost}:${relayState.config.targetPort}`}
   >
     <div class="flex items-center space-x-1.5">
       <span
         class="w-2 h-2 rounded-full shrink-0 transition-colors {isTargetActive ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]' : 'bg-zinc-500'}"
       ></span>
-      <span class="font-normal text-xs text-zinc-400">Alvo:</span>
+      <span class="font-normal text-xs text-zinc-400 hidden sm:inline">Alvo:</span>
     </div>
     <span class="font-mono text-xs font-semibold text-zinc-100">
       {relayState.config.targetHost}:{relayState.config.targetPort}
     </span>
     {#if isTargetActive}
-      <span class="text-[9px] px-1.5 py-0.2 rounded font-mono uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium">
+      <span class="text-[9px] px-1.5 py-0.2 rounded font-mono uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium hidden md:inline">
         online
       </span>
     {/if}

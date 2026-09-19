@@ -157,39 +157,40 @@
         </span>
       </div>
 
-      <div class="flex items-center space-x-2">
+      <div class="flex items-center space-x-1.5 shrink-0">
         <!-- Testar Segurança Ativa -->
         <button
           onclick={() => (isProbesOpen = true)}
-          class="text-xs px-2.5 py-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-300 hover:text-white font-medium flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
-          title="Disparar testes ativos de segurança (Mass Assignment, BOLA, Auth Bypass, etc.) nesta rota"
+          class="h-8 text-xs px-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 text-zinc-200 font-medium flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
+          title="Disparar testes ativos de segurança nesta rota"
         >
-          <IconShield size={12} class="text-indigo-400" />
-          <span class="hidden sm:inline">Testar Segurança</span>
+          <IconShield size={13} class="text-indigo-400 shrink-0" />
+          <span class="hidden lg:inline">Testar Segurança</span>
         </button>
 
         <!-- Replay Action -->
         <button
           onclick={() => (isReplayOpen = true)}
-          class="text-xs px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center space-x-1.5 transition-colors cursor-pointer shadow-xs"
+          class="h-8 text-xs px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
           title="Editar parâmetros e reenviar chamada no disparador"
         >
-          <IconPlay size={11} class="fill-current" />
+          <IconPlay size={11} class="fill-current shrink-0" />
           <span>Replay</span>
         </button>
 
         <!-- Salvar na Coleção -->
         <button
           onclick={handleSaveToCollection}
-          class="text-xs px-2.5 py-1 rounded border transition-colors cursor-pointer flex items-center space-x-1.5 {saveFeedback ? 'bg-amber-500/20 border-amber-500/50 text-amber-300' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-300 hover:text-white'}"
+          class="h-8 text-xs px-2.5 rounded-lg border transition-all cursor-pointer flex items-center space-x-1.5 active:scale-[0.98] {saveFeedback ? 'bg-amber-500/15 border-amber-500/40 text-amber-300' : 'bg-zinc-900 hover:bg-zinc-800/90 border-zinc-800 hover:border-zinc-700 text-zinc-200'}"
           title="Salvar esta requisição do histórico na Coleção de rotas do projeto"
         >
           {#if saveFeedback}
-            <IconCheck size={12} class="text-amber-400" />
-            <span class="text-amber-300 font-medium">Salvo na Coleção!</span>
+            <IconCheck size={13} class="text-amber-400 shrink-0" />
+            <span class="text-amber-300 font-medium">Salvo!</span>
           {:else}
-            <IconBookmark size={12} class="text-amber-400" />
-            <span>Salvar na Coleção</span>
+            <IconBookmark size={13} class="text-amber-400 shrink-0" />
+            <span class="hidden xl:inline font-medium">Salvar na Coleção</span>
+            <span class="hidden md:inline xl:hidden font-medium">Salvar</span>
           {/if}
         </button>
 
@@ -198,31 +199,31 @@
           onclick={() => {
             if (exchange) relayState.removeExchange(exchange.id);
           }}
-          class="p-1 rounded bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-rose-400 transition-colors cursor-pointer"
+          class="h-8 w-8 rounded-lg text-zinc-400 hover:text-rose-400 hover:bg-zinc-800 transition-colors flex items-center justify-center cursor-pointer active:scale-[0.98]"
           title="Apagar esta requisição do histórico"
         >
-          <IconTrash size={13} />
+          <IconTrash size={14} />
         </button>
 
         <!-- Segmented Tabs com Binding Direto na Store Global -->
-        <div class="flex space-x-1 bg-zinc-950/80 p-1 rounded-lg border border-zinc-800/80 text-xs shadow-inner">
+        <div class="h-8 flex space-x-0.5 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800 text-xs shrink-0">
           <button
             type="button"
-            class="px-3 py-1 rounded-md transition-all cursor-pointer font-medium border {relayState.inspectorTab === 'request' ? 'bg-zinc-800 text-zinc-100 shadow-sm border-zinc-700/50' : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'}"
+            class="h-7 px-2.5 rounded-md transition-all cursor-pointer font-medium {relayState.inspectorTab === 'request' ? 'bg-zinc-800 text-zinc-100 shadow-xs' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'}"
             onclick={() => { relayState.inspectorTab = "request"; }}
           >
             Request
           </button>
           <button
             type="button"
-            class="px-3 py-1 rounded-md transition-all cursor-pointer font-medium border {relayState.inspectorTab === 'response' ? 'bg-zinc-800 text-zinc-100 shadow-sm border-zinc-700/50' : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'}"
+            class="h-7 px-2.5 rounded-md transition-all cursor-pointer font-medium {relayState.inspectorTab === 'response' ? 'bg-zinc-800 text-zinc-100 shadow-xs' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'}"
             onclick={() => { relayState.inspectorTab = "response"; }}
           >
             Response
           </button>
           <button
             type="button"
-            class="px-3 py-1 rounded-md transition-all flex items-center space-x-1 cursor-pointer font-medium border {relayState.inspectorTab === 'diff' ? 'bg-zinc-800 text-zinc-100 shadow-sm border-zinc-700/50' : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'}"
+            class="h-7 px-2.5 rounded-md transition-all flex items-center space-x-1 cursor-pointer font-medium {relayState.inspectorTab === 'diff' ? 'bg-zinc-800 text-zinc-100 shadow-xs' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'}"
             onclick={() => { relayState.inspectorTab = "diff"; }}
             title="Comparar resposta desta chamada com outra do histórico"
           >
@@ -231,9 +232,9 @@
           </button>
           <button
             type="button"
-            class="px-3 py-1 rounded-md transition-all flex items-center space-x-1 cursor-pointer font-medium border {relayState.inspectorTab === 'curl' ? 'bg-zinc-800 text-zinc-100 shadow-sm border-zinc-700/50' : 'border-transparent text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900/60'}"
+            class="h-7 px-2.5 rounded-md transition-all flex items-center space-x-1 cursor-pointer font-medium {relayState.inspectorTab === 'curl' ? 'bg-zinc-800 text-zinc-100 shadow-xs' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'}"
             onclick={() => { relayState.inspectorTab = "curl"; }}
-            title="Comando cURL pronto para terminal"
+            title="Visualizar e copiar comando cURL desta requisição"
           >
             <IconCode size={12} />
             <span>cURL</span>

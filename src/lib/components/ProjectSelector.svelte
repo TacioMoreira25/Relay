@@ -35,12 +35,12 @@
   <!-- Botão Gatilho na TopBar -->
   <button
     onclick={() => (isOpen = !isOpen)}
-    class="flex items-center space-x-1.5 bg-zinc-950/80 hover:bg-zinc-900 border border-zinc-800/80 px-2 py-1 rounded-md text-xs font-mono text-zinc-300 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0"
+    class="h-8 flex items-center space-x-1.5 bg-zinc-900 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 px-2.5 rounded-lg text-xs font-mono text-zinc-300 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0 active:scale-[0.98]"
     title="Alternar ou gerenciar projetos de APIs"
   >
     <IconFolder size={13} class="text-indigo-400 shrink-0" />
-    <span class="font-semibold text-zinc-100 max-w-[100px] truncate">{relayState.activeProject.name}</span>
-    <span class="text-zinc-500 text-[9px]">▾</span>
+    <span class="font-semibold text-zinc-100 max-w-[70px] sm:max-w-[120px] lg:max-w-[160px] truncate">{relayState.activeProject.name}</span>
+    <span class="text-zinc-500 text-[10px]">▾</span>
   </button>
 
   <!-- Dropdown de Projetos -->

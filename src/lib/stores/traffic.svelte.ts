@@ -463,10 +463,34 @@ class RelayState {
         e.id !== exchange.id &&
         e.request.method === exchange.request.method &&
         e.request.uri === exchange.request.uri &&
-        Math.abs(e.request.timestamp - exchange.request.timestamp) < 4000
+        Math.abs(e.request.timestamp - exchange.request.timestamp) < 6000
     );
     return sameRoute.length > 0;
   }
+
+  groupedExchanges = $derived.by((): { exchange: HttpExchange; count: number }[] => {
+    const result: { exchange: HttpExchange; count: number }[] = [];
+    const sourceList = this.filteredExchanges;
+
+    for (const item of sourceList) {
+      if (result.length > 0) {
+        const last = result[result.length - 1];
+        const isSameRoute =
+          !item.id.startsWith("replay-") &&
+          !last.exchange.id.startsWith("replay-") &&
+          last.exchange.request.method === item.request.method &&
+          last.exchange.request.uri === item.request.uri &&
+          Math.abs(last.exchange.request.timestamp - item.request.timestamp) < 10000;
+
+        if (isSameRoute) {
+          last.count += 1;
+          continue;
+        }
+      }
+      result.push({ exchange: item, count: 1 });
+    }
+    return result;
+  });
 
   filteredTemplates = $derived(
     this.savedTemplates.filter(t => {
@@ -780,7 +804,7 @@ class RelayState {
   addJwt(jwt: ExtractedJwt): void {
     const existingIndex = this.jwts.findIndex(j => j.token === jwt.token);
     if (existingIndex >= 0) {
-      this.jwts[existingIndex] = jwt;
+      this.jwts = this.jwts.map((j, idx) => (idx === existingIndex ? jwt : j));
     } else {
       this.jwts = [jwt, ...this.jwts];
     }

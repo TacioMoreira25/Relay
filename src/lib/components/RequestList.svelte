@@ -470,7 +470,7 @@
   <div class="flex-1 overflow-y-auto divide-y divide-zinc-800/40">
     {#if relayState.sidebarTab === "history"}
       <!-- 1. HISTÓRICO DE TRÁFEGO -->
-      {#each relayState.filteredExchanges as exchange (exchange.id)}
+      {#each relayState.groupedExchanges as { exchange, count } (exchange.id)}
         {@const isManual = exchange.id.startsWith("replay-")}
         {@const isPoll = relayState.isPollingExchange(exchange)}
         {@const isSelected = selectedIds.includes(exchange.id)}
@@ -511,6 +511,10 @@
               {#if isManual}
                 <span class="px-1 py-0.2 rounded text-[9px] font-bold font-mono bg-indigo-500/10 text-indigo-300 border border-indigo-500/20" title="Disparo manual via Disparador/Replay">
                   MANUAL
+                </span>
+              {:else if count > 1}
+                <span class="px-1 py-0.2 rounded text-[9px] font-mono font-medium bg-amber-500/15 text-amber-300 border border-amber-500/30" title="{count} requisições idênticas em curto intervalo agrupadas">
+                  {count}x
                 </span>
               {:else if isPoll}
                 <span class="px-1 py-0.2 rounded text-[9px] font-mono bg-zinc-800 text-zinc-400 border border-zinc-700" title="Requisição repetida rápida em sequência (polling)">

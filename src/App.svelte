@@ -199,10 +199,10 @@
   <!-- TopBar Minimalista e Focada -->
   <header class="h-12 border-b border-zinc-800 bg-zinc-950 px-3 flex items-center justify-between shrink-0 gap-2 relative z-30">
     <!-- Brand & Project Switcher -->
-    <div class="flex items-center space-x-2 shrink-0">
+    <div class="flex items-center space-x-2 shrink-0 min-w-0">
       <Logo />
 
-      <div class="h-4 w-[1px] bg-zinc-800"></div>
+      <div class="h-4 w-[1px] bg-zinc-800 shrink-0"></div>
 
       <!-- Seletor de Projetos -->
       <ProjectSelector
@@ -213,13 +213,13 @@
 
     <!-- Navigation Tabs & Target Selector -->
     <div class="flex items-center space-x-2 shrink-0">
-      <nav class="flex items-center space-x-0.5 bg-zinc-900/80 p-0.5 rounded-lg border border-zinc-800 text-xs shrink-0">
+      <nav class="flex items-center space-x-0.5 bg-zinc-900/90 p-0.5 rounded-lg border border-zinc-800 text-xs shrink-0 h-8">
         <button
           onclick={() => (relayState.activeView = "traffic")}
-          class="px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 {relayState.activeView === 'traffic' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="h-7 px-2.5 rounded-md transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 cursor-pointer {relayState.activeView === 'traffic' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'}"
         >
           <IconActivity size={13} class="text-indigo-400 shrink-0" />
-          <span>Tráfego</span>
+          <span class="hidden sm:inline">Tráfego</span>
           {#if relayState.totalRequests > 0}
             <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-700/80 text-zinc-300 font-mono">
               {relayState.totalRequests}
@@ -229,7 +229,7 @@
 
         <button
           onclick={() => (relayState.activeView = "jwt")}
-          class="px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 {relayState.activeView === 'jwt' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="h-7 px-2.5 rounded-md transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 cursor-pointer {relayState.activeView === 'jwt' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'}"
           title="Sessão & Tokens JWT"
         >
           <IconKey size={13} class="text-amber-400 shrink-0" />
@@ -243,11 +243,11 @@
 
         <button
           onclick={() => (relayState.activeView = "security")}
-          class="px-2.5 py-1 rounded-md transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 {relayState.activeView === 'security' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200'}"
+          class="h-7 px-2.5 rounded-md transition-all flex items-center space-x-1.5 whitespace-nowrap shrink-0 cursor-pointer {relayState.activeView === 'security' ? 'bg-zinc-800 text-zinc-100 font-medium shadow-xs' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'}"
           title="Auditoria Shift-Left DAST"
         >
           <IconShield size={13} class="shrink-0 {relayState.criticalFindingsCount > 0 ? 'text-rose-400' : 'text-emerald-400'}" />
-          <span>Segurança</span>
+          <span class="hidden md:inline">Segurança</span>
           {#if relayState.totalFindings > 0}
             <span class="text-[10px] px-1.5 py-0.2 rounded-full font-mono font-medium {relayState.criticalFindingsCount > 0 ? 'bg-rose-500/30 text-rose-300' : 'bg-emerald-500/30 text-emerald-300'}">
               {relayState.totalFindings}
@@ -262,23 +262,23 @@
 
     <!-- Actions & Controls -->
     <div class="flex items-center space-x-1.5 shrink-0">
-      <!-- Simulador de Caos & Falhas (Acesso Rápido em 1 Clique) -->
+      <!-- Simulador de Caos & Falhas -->
       <ChaosPopover />
 
       <!-- Nova Requisição Direta -->
       <button
         onclick={() => { activeTestingTemplate = null; isNewRequestOpen = true; }}
-        class="text-xs px-2 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-200 transition-colors flex items-center space-x-1.5 cursor-pointer shadow-xs whitespace-nowrap shrink-0"
+        class="h-8 text-xs px-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 text-zinc-200 transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs whitespace-nowrap shrink-0 active:scale-[0.98]"
         title="Criar e disparar nova requisição HTTP direta (Ctrl+N)"
       >
         <IconPlus size={13} class="text-indigo-400 shrink-0" />
-        <span class="text-[11px] font-medium hidden md:inline">Nova Requisição</span>
+        <span class="font-medium hidden lg:inline">Nova Requisição</span>
       </button>
 
       <!-- Ações Secundárias -->
       <button
         onclick={() => (isExportOpen = true)}
-        class="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer shrink-0"
+        class="h-8 w-8 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors flex items-center justify-center cursor-pointer shrink-0 active:scale-[0.98]"
         title="Exportar HAR / OpenAPI ou Certificados HTTPS (Ctrl+E)"
       >
         <IconDownload size={14} />
@@ -286,7 +286,7 @@
 
       <button
         onclick={() => (isTipsOpen = true)}
-        class="p-1.5 rounded-md hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer shrink-0"
+        class="h-8 w-8 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors flex items-center justify-center cursor-pointer shrink-0 active:scale-[0.98]"
         title="Guia Rápido & Atalhos (Ctrl+/)"
       >
         <IconHelpCircle size={14} />
@@ -295,12 +295,13 @@
       <!-- Botão Iniciar Proxy -->
       <button
         onclick={toggleProxy}
-        class="text-xs px-3 py-1.5 rounded-md font-medium flex items-center space-x-1.5 transition-all shadow-md cursor-pointer whitespace-nowrap shrink-0 {relayState.isProxyRunning ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold shadow-[0_0_12px_rgba(16,185,129,0.4)]' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}"
+        class="h-8 text-xs px-3 rounded-lg font-semibold flex items-center space-x-1.5 transition-all shadow-xs cursor-pointer whitespace-nowrap shrink-0 active:scale-[0.98] {relayState.isProxyRunning ? 'bg-emerald-500 hover:bg-emerald-400 text-zinc-950 shadow-[0_0_10px_rgba(16,185,129,0.3)]' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}"
         title="Atalho: Ctrl+P"
       >
         {#if relayState.isProxyRunning}
           <IconSquare size={12} class="fill-current shrink-0" />
-          <span>Ativo (:{relayState.config.listenPort})</span>
+          <span class="hidden sm:inline">Ativo (:{relayState.config.listenPort})</span>
+          <span class="sm:hidden">:{relayState.config.listenPort}</span>
         {:else}
           <IconPlay size={12} class="fill-current shrink-0" />
           <span>Iniciar Proxy</span>

@@ -42,14 +42,14 @@
   <!-- Botão Discreto no TopBar -->
   <button
     onclick={() => (isOpen = !isOpen)}
-    class="text-xs px-2 py-1 rounded-md border transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs whitespace-nowrap shrink-0 {hasChaosActive ? 'bg-amber-500/10 border-amber-500/40 text-amber-300 font-bold' : 'bg-zinc-900 hover:bg-zinc-800 border-zinc-800 text-zinc-400 hover:text-zinc-200'}"
+    class="h-8 text-xs px-2.5 rounded-lg border transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs whitespace-nowrap shrink-0 active:scale-[0.98] {hasChaosActive ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 font-bold' : 'bg-zinc-900 hover:bg-zinc-800/90 border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200'}"
     title="Simular Internet Lenta e Falhas de Backend (Chaos Testing)"
   >
-    <IconActivity size={13} class="shrink-0 {hasChaosActive ? 'text-amber-400 animate-pulse' : 'text-zinc-500'}" />
+    <IconActivity size={13} class="shrink-0 {hasChaosActive ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}" />
     {#if hasChaosActive}
       <span class="text-[11px] font-mono">{relayState.config.latencyMs}ms | {Math.round(relayState.config.simulateFailureRate * 100)}%</span>
     {:else}
-      <span class="text-[11px] hidden xl:inline">Simular Rede</span>
+      <span class="font-medium hidden lg:inline">Simular Rede</span>
     {/if}
   </button>
 
