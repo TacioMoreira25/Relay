@@ -54,22 +54,39 @@
 <div class="flex h-full w-full bg-zinc-950 text-zinc-200 overflow-hidden">
   <!-- Left Column: Token List -->
   <div class="w-80 border-r border-zinc-800/80 bg-zinc-950 flex flex-col h-full select-none">
-    <div class="p-2.5 border-b border-zinc-800/80 flex items-center justify-between bg-zinc-900/30">
-      <div class="flex items-center space-x-1.5 text-xs font-medium text-zinc-400">
+    <div class="h-11 px-3 border-b border-zinc-800/70 flex items-center justify-between bg-zinc-900/60 backdrop-blur-xs">
+      <div class="flex items-center space-x-1.5 text-xs font-medium text-zinc-300">
         <span>Tokens JWT</span>
         <span class="text-[10px] px-1.5 py-0.2 rounded-full bg-zinc-800 text-zinc-300 font-mono">
           {relayState.totalJwts}
         </span>
       </div>
-      {#if relayState.totalJwts > 0}
+      <div class="flex items-center space-x-2">
         <button
-          onclick={clearAllJwts}
-          class="text-[11px] text-zinc-500 hover:text-rose-400 transition-colors p-1 rounded hover:bg-zinc-800 flex items-center space-x-1 cursor-pointer"
+          onclick={() => {
+            const nowSec = Math.floor(Date.now() / 1000);
+            // Expulsa expirados ou com mais de 24 horas (86400s)
+            relayState.jwts = relayState.jwts.filter(j => !j.expiresAt || j.expiresAt > nowSec);
+            if (relayState.selectedJwt && isExpired(relayState.selectedJwt.expiresAt)) {
+              relayState.selectedJwt = relayState.jwts[0] || null;
+            }
+          }}
+          class="text-[10px] px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer border border-zinc-700/80"
+          title="Limpar apenas tokens expirados"
         >
-          <IconTrash size={12} />
-          <span>Limpar</span>
+          Limpar Expirados
         </button>
-      {/if}
+        {#if relayState.totalJwts > 0}
+          <button
+            onclick={clearAllJwts}
+            class="text-[11px] text-zinc-500 hover:text-rose-400 transition-colors p-1 rounded hover:bg-zinc-800 flex items-center space-x-1 cursor-pointer"
+            title="Limpar todos os tokens"
+          >
+            <IconTrash size={12} />
+            <span>Limpar Todos</span>
+          </button>
+        {/if}
+      </div>
     </div>
 
     <div class="flex-1 overflow-y-auto divide-y divide-zinc-900">
@@ -86,10 +103,12 @@
       {:else}
         {#each relayState.jwts as jwt (jwt.token)}
           {@const expired = isExpired(jwt.expiresAt)}
-          <button
-            type="button"
-            class="w-full text-left p-3 hover:bg-zinc-900/50 transition-colors flex flex-col space-y-1.5 border-l-2 {relayState.selectedJwt?.token === jwt.token ? 'bg-zinc-900/80 border-indigo-500' : 'border-transparent'}"
+          <div
+            role="button"
+            tabindex="0"
+            class="group w-full text-left p-3 hover:bg-zinc-900/50 transition-colors flex flex-col space-y-1.5 border-l-2 cursor-pointer {relayState.selectedJwt?.token === jwt.token ? 'bg-zinc-900/80 border-indigo-500' : 'border-transparent'}"
             onclick={() => relayState.selectJwt(jwt)}
+            onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") relayState.selectJwt(jwt); }}
           >
             <div class="flex items-center justify-between w-full">
               <span class="text-xs font-mono font-medium text-zinc-200 truncate max-w-[180px]" title={jwt.subject || jwt.source}>
@@ -106,9 +125,21 @@
 
             <div class="flex items-center justify-between text-[10px] text-zinc-600 font-mono">
               <span>{jwt.source}</span>
-              <span>{new Date(jwt.detectedAt).toLocaleTimeString()}</span>
+              <div class="flex items-center space-x-1">
+                <span>{new Date(jwt.detectedAt).toLocaleTimeString()}</span>
+                <button
+                  onclick={(e) => {
+                    e.stopPropagation();
+                    relayState.removeJwt(jwt.token);
+                  }}
+                  class="opacity-0 group-hover:opacity-100 hover:text-rose-400 p-0.5 transition-opacity cursor-pointer ml-1"
+                  title="Apagar este token"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
-          </button>
+          </div>
         {/each}
       {/if}
     </div>

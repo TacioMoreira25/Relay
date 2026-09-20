@@ -91,34 +91,129 @@
 
   function formatJsonBody(): void {
     if (!body.trim()) return;
+    let textToParse = body.trim();
+    
+    // Se o usuário não abriu a chave '{' mas colocou pares de chave:valor (ex: "email": "admin..."), envolve automaticamente com '{' e '}'
+    if (!textToParse.startsWith("{") && textToParse.includes(":")) {
+      textToParse = "{\n" + textToParse + "\n}";
+    }
+
     try {
-      const parsed = JSON.parse(body);
+      const parsed = JSON.parse(textToParse);
       body = JSON.stringify(parsed, null, 2);
       statusMessage = "JSON formatado!";
       setTimeout(() => (statusMessage = null), 2000);
+      return;
     } catch {
-      statusMessage = "JSON inválido. Verifique vírgulas e aspas.";
-      setTimeout(() => (statusMessage = null), 3000);
+      // Tenta recuperar JSON incompleto (ex: falta de fechamento })
+      let fixedText = textToParse;
+      const openBraces = (fixedText.match(/\{/g) || []).length;
+      const closeBraces = (fixedText.match(/\}/g) || []).length;
+      if (openBraces > closeBraces) {
+        fixedText += "}".repeat(openBraces - closeBraces);
+      }
+      const openBrackets = (fixedText.match(/\[/g) || []).length;
+      const closeBrackets = (fixedText.match(/\]/g) || []).length;
+      if (openBrackets > closeBrackets) {
+        fixedText += "]".repeat(openBrackets - closeBrackets);
+      }
+
+      try {
+        const parsedFixed = JSON.parse(fixedText);
+        body = JSON.stringify(parsedFixed, null, 2);
+        statusMessage = "JSON corrigido e formatado!";
+        setTimeout(() => (statusMessage = null), 2000);
+        return;
+      } catch {
+        statusMessage = "JSON com erro sintático. Verifique aspas e vírgulas.";
+        setTimeout(() => (statusMessage = null), 3000);
+      }
+    }
+  }
+
+  let lastFocusedInput: HTMLInputElement | HTMLTextAreaElement | null = null;
+  let lastSelectionStart = 0;
+  let lastSelectionEnd = 0;
+
+  function trackFocus(e: Event): void {
+    const target = e.target as HTMLInputElement | HTMLTextAreaElement;
+    if (target) {
+      lastFocusedInput = target;
+      lastSelectionStart = target.selectionStart || 0;
+      lastSelectionEnd = target.selectionEnd || 0;
     }
   }
 
   function insertVariable(varName: string): void {
+    const tagToInsert = `{{${varName}}}`;
+
+    // 1. Se o último campo focado foi a URI
+    if (lastFocusedInput && lastFocusedInput.id === "replay-uri-input") {
+      const start = lastSelectionStart;
+      const end = lastSelectionEnd;
+      // Se já existia uma {{variavel}}, substitui por completo
+      const existingMatch = uri.match(/\{\{[^}]+\}\}/);
+      if (start === end && existingMatch && existingMatch.index !== undefined) {
+        uri = uri.substring(0, existingMatch.index) + tagToInsert + uri.substring(existingMatch.index + existingMatch[0].length);
+      } else {
+        uri = uri.substring(0, start) + tagToInsert + uri.substring(end);
+      }
+      showVariableDropdown = false;
+      setTimeout(() => {
+        if (lastFocusedInput) {
+          lastFocusedInput.focus();
+        }
+      }, 0);
+      return;
+    }
+
+    // 2. Se o último campo focado foi um Header
+    if (lastFocusedInput && lastFocusedInput.dataset.headerIdx !== undefined) {
+      const idx = parseInt(lastFocusedInput.dataset.headerIdx, 10);
+      const field = lastFocusedInput.dataset.headerField as "key" | "value";
+      if (!isNaN(idx) && headers[idx]) {
+        const start = lastSelectionStart;
+        const end = lastSelectionEnd;
+        headers[idx][field] = headers[idx][field].substring(0, start) + tagToInsert + headers[idx][field].substring(end);
+        showVariableDropdown = false;
+        setTimeout(() => {
+          if (lastFocusedInput) {
+            lastFocusedInput.focus();
+          }
+        }, 0);
+        return;
+      }
+    }
+
+    // 3. Padrão: Corpo da requisição (Textarea)
     const target = document.querySelector<HTMLTextAreaElement>('#replay-textarea');
     if (!target) {
-      body += `{{${varName}}}`;
+      body += tagToInsert;
       showVariableDropdown = false;
       return;
     }
 
-    const start = target.selectionStart;
-    const end = target.selectionEnd;
-    const varValue = relayState.activeVariables[varName] || `{{${varName}}}`;
-    body = body.substring(0, start) + `"${varValue}"` + body.substring(end);
+    let start = lastFocusedInput === target ? lastSelectionStart : target.selectionStart;
+    let end = lastFocusedInput === target ? lastSelectionEnd : target.selectionEnd;
+
+    // Se houver seleção de texto ativa (start !== end), substitui exatamente a seleção
+    if (start !== end) {
+      body = body.substring(0, start) + tagToInsert + body.substring(end);
+    } else {
+      // Se não houver seleção, verifica se o cursor está antes de um fechamento de JSON '}'
+      const lastBraceIndex = body.lastIndexOf("}");
+      if (lastBraceIndex !== -1 && (start >= lastBraceIndex || start === body.length)) {
+        start = lastBraceIndex;
+        end = lastBraceIndex;
+      }
+      body = body.substring(0, start) + tagToInsert + body.substring(end);
+    }
+
     showVariableDropdown = false;
 
     setTimeout(() => {
       target.focus();
-      target.selectionStart = target.selectionEnd = start + varValue.length + 2;
+      target.selectionStart = target.selectionEnd = start + tagToInsert.length;
     }, 0);
   }
 
@@ -296,16 +391,26 @@
               </button>
 
               {#if showVariableDropdown}
-                <div class="absolute right-0 top-8 w-60 bg-zinc-900 border border-zinc-800 rounded-lg shadow-2xl p-1.5 z-50 space-y-1 font-mono text-[11px] max-h-48 overflow-y-auto">
-                  {#each availableVars as vName}
-                    <button
-                      onclick={() => insertVariable(vName)}
-                      class="w-full text-left px-2 py-1.5 rounded hover:bg-zinc-800 flex items-center justify-between text-zinc-300 transition-colors cursor-pointer"
-                    >
-                      <span class="text-indigo-400 font-bold">{`{{${vName}}}`}</span>
-                      <span class="text-zinc-500 truncate max-w-[90px] text-[10px]">{relayState.activeVariables[vName]}</span>
-                    </button>
-                  {/each}
+                <!-- Backdrop para fechar ao clicar fora -->
+                <div class="fixed inset-0 z-40" onclick={() => (showVariableDropdown = false)} role="presentation"></div>
+
+                <div class="absolute right-0 top-9 w-72 bg-zinc-900/95 backdrop-blur-md border border-zinc-800 rounded-xl shadow-2xl p-2 z-50 space-y-1 text-xs select-none">
+                  <div class="px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400 border-b border-zinc-800 flex justify-between">
+                    <span>Variáveis Disponíveis</span>
+                    <span class="text-zinc-500 font-mono font-normal">{availableVars.length} itens</span>
+                  </div>
+
+                  <div class="max-h-52 overflow-y-auto space-y-0.5 pr-0.5 pt-1">
+                    {#each availableVars as vName}
+                      <button
+                        onclick={() => insertVariable(vName)}
+                        class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-indigo-600/20 border border-transparent hover:border-indigo-500/30 flex items-center justify-between text-zinc-200 transition-colors cursor-pointer group"
+                      >
+                        <span class="font-mono text-xs text-indigo-400 font-semibold group-hover:text-indigo-300">{`{{${vName}}}`}</span>
+                        <span class="font-mono text-[10px] text-zinc-500 truncate max-w-[110px]">{relayState.activeVariables[vName]}</span>
+                      </button>
+                    {/each}
+                  </div>
                 </div>
               {/if}
             </div>
@@ -346,12 +451,15 @@
 
         <span class="text-zinc-500 font-mono text-xs pl-2 select-none">/</span>
         <input
+          id="replay-uri-input"
           type="text"
           value={uri.startsWith('/') ? uri.slice(1) : uri}
           oninput={(e) => {
             const val = (e.target as HTMLInputElement).value;
             uri = val.startsWith('/') ? val : `/${val}`;
           }}
+          onfocus={trackFocus}
+          onselect={trackFocus}
           placeholder="auth/login ou usuarios"
           class="flex-1 bg-transparent px-1 py-1.5 text-xs font-mono text-zinc-100 focus:outline-none"
         />
@@ -380,12 +488,20 @@
                 <input
                   type="text"
                   bind:value={h.key}
+                  data-header-idx={idx}
+                  data-header-field="key"
+                  onfocus={trackFocus}
+                  onselect={trackFocus}
                   placeholder="Header (ex: Authorization)"
                   class="w-1/3 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
                 />
                 <input
                   type="text"
                   bind:value={h.value}
+                  data-header-idx={idx}
+                  data-header-field="value"
+                  onfocus={trackFocus}
+                  onselect={trackFocus}
                   placeholder="Valor (ex: Bearer token...)"
                   class="flex-1 bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs font-mono text-zinc-200 focus:outline-none focus:border-indigo-500"
                 />
@@ -419,6 +535,8 @@
             id="replay-textarea"
             bind:value={body}
             onkeydown={handleBodyKeyDown}
+            onfocus={trackFocus}
+            onselect={trackFocus}
             rows="7"
             placeholder="JSON do payload..."
             class="w-full bg-zinc-950 border border-zinc-800 rounded-lg p-2.5 text-zinc-200 font-mono text-xs focus:outline-none focus:border-indigo-500 resize-y leading-relaxed"
@@ -428,23 +546,8 @@
     </div>
 
     <!-- Modal Footer -->
-    <div class="flex items-center justify-between pt-3 border-t border-zinc-800 select-none">
-      <div class="text-[10px] text-zinc-500 flex-1 truncate pr-4">
-        Dica: Use <code class="text-indigo-400">{'{{token}}'}</code> ou <code class="text-indigo-400">{'{{id}}'}</code> para dados dinâmicos.
-      </div>
-
+    <div class="flex items-center justify-end pt-3 border-t border-zinc-800 select-none">
       <div class="flex items-center space-x-2 shrink-0">
-        {#if template}
-          <button
-            onclick={handleDeleteRoute}
-            class="text-xs px-3 py-1.5 rounded hover:bg-rose-500/10 text-rose-400/80 hover:text-rose-400 transition-all flex items-center space-x-1.5 cursor-pointer whitespace-nowrap"
-            title="Deletar esta rota da Coleção"
-          >
-            <IconTrash size={11} />
-            <span>Excluir</span>
-          </button>
-        {/if}
-
         <button
           onclick={closeModal}
           class="text-xs px-3 py-1.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer whitespace-nowrap"
@@ -464,11 +567,11 @@
         <button
           onclick={sendReplay}
           disabled={isSending}
-          class="text-xs px-4 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-medium transition-all shadow-md flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap active:scale-[0.98]"
-          title="Atalho: Ctrl+Enter"
+          class="text-xs px-3.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold transition-all shadow-xs flex items-center space-x-1.5 cursor-pointer disabled:opacity-50 whitespace-nowrap active:scale-[0.98]"
+          title="Executar Replay (Ctrl+Enter)"
         >
           <IconPlay size={11} class="fill-current" />
-          <span>{isSending ? 'Enviando...' : 'Executar Replay [Ctrl+Enter]'}</span>
+          <span>{isSending ? 'Enviando...' : 'Executar'}</span>
         </button>
       </div>
     </div>

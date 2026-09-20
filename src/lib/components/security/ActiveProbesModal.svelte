@@ -74,27 +74,60 @@
     },
   ];
 
+  let probeError = $state<string | null>(null);
+
   async function runSingleProbe(probeType: ProbeType): Promise<void> {
     if (!targetExchange) return;
     isRunning = true;
     activeProbeRunning = probeType;
+    probeError = null;
 
     try {
       const res = await invoke<ActiveProbeResult>("run_active_probe", {
         exchangeId: targetExchange.id,
+        exchangeFallback: targetExchange,
         probeType,
-        tokenB: tokenB.trim() || undefined,
+        tokenB: tokenB.trim() || null,
       });
 
-      probeResults = {
-        ...probeResults,
-        [probeType]: res,
-      };
-    } catch (e) {
+      // Atualiza o estado reativo dos resultados no modal
+      if (res) {
+        probeResults[probeType] = res;
+        probeResults = { ...probeResults };
+
+        // Se for vulnerável, registra no store global de Segurança
+        if (res.vulnerable) {
+          const { category, severity } = matchProbeFinding(probeType);
+          relayState.addSecurityFinding({
+            id: res.id || `finding-${Date.now()}`,
+            exchangeId: targetExchange.id,
+            title: res.title,
+            description: res.details,
+            severity,
+            category,
+            remediation: res.remediation,
+            affectedResource: `${res.targetMethod || targetExchange.request.method} ${res.targetUri || targetExchange.request.uri}`,
+            timestamp: res.timestamp || Date.now(),
+          });
+        }
+      }
+    } catch (e: any) {
       console.error(`Erro ao executar sonda ${probeType}:`, e);
+      probeError = `Erro ao executar sonda: ${e?.message || e}`;
     } finally {
       isRunning = false;
       activeProbeRunning = null;
+    }
+  }
+
+  function matchProbeFinding(p: ProbeType): { category: any; severity: any } {
+    switch (p) {
+      case "mass_assignment": return { category: "data_exposure", severity: "high" };
+      case "auth_bypass": return { category: "missing_auth", severity: "critical" };
+      case "bola_ab": return { category: "missing_auth", severity: "critical" };
+      case "hidden_verbs": return { category: "missing_auth", severity: "medium" };
+      case "stack_trace": return { category: "tech_leak", severity: "medium" };
+      default: return { category: "tech_leak", severity: "info" };
     }
   }
 
@@ -161,18 +194,41 @@
         </div>
 
         <!-- Token B para teste BOLA -->
-        <div class="w-64">
-          <label for="probe-token-b-input" class="block text-[10px] uppercase font-bold tracking-wider text-zinc-500 mb-1 flex items-center space-x-1">
-            <IconKey size={11} class="text-amber-400" />
-            <span>Token B (Para Teste BOLA / IDOR)</span>
-          </label>
-          <input
-            id="probe-token-b-input"
-            type="text"
-            placeholder="Cole o JWT do Usuário B..."
-            bind:value={tokenB}
-            class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-indigo-500"
-          />
+        <div class="w-80">
+          <div class="flex items-center justify-between mb-1">
+            <label for="probe-token-b-input" class="text-[10px] uppercase font-bold tracking-wider text-zinc-500 flex items-center space-x-1">
+              <IconKey size={11} class="text-amber-400" />
+              <span>Token B (Para Teste BOLA)</span>
+            </label>
+            {#if relayState.jwts.length > 0}
+              <span class="text-[9px] text-indigo-400 font-semibold">{relayState.jwts.length} token(s) capturado(s)</span>
+            {/if}
+          </div>
+
+          <div class="relative">
+            <input
+              id="probe-token-b-input"
+              type="text"
+              placeholder="Cole o JWT do Usuário B ou selecione abaixo..."
+              bind:value={tokenB}
+              class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 font-mono focus:outline-none focus:border-indigo-500 truncate"
+            />
+          </div>
+
+          {#if relayState.jwts.length > 0}
+            <div class="mt-1 flex flex-wrap gap-1 max-h-12 overflow-y-auto">
+              {#each relayState.jwts as jwtItem, idx}
+                <button
+                  type="button"
+                  onclick={() => (tokenB = jwtItem.token)}
+                  class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 hover:bg-indigo-600/30 text-zinc-300 hover:text-indigo-300 border border-zinc-700/60 transition-colors cursor-pointer truncate max-w-[150px]"
+                  title={jwtItem.token}
+                >
+                  {jwtItem.subject ? `ID: ${jwtItem.subject}` : `Token ${idx + 1}`}
+                </button>
+              {/each}
+            </div>
+          {/if}
         </div>
 
         <!-- Executar Todas -->
@@ -195,6 +251,11 @@
 
       <!-- Lista de Sondas e Resultados -->
       <div class="flex-1 overflow-y-auto p-4 space-y-3">
+        {#if probeError}
+          <div class="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-mono">
+            {probeError}
+          </div>
+        {/if}
         {#each probeDefinitions as probe}
           {@const result = probeResults[probe.type]}
           {@const isThisRunning = activeProbeRunning === probe.type}
@@ -240,16 +301,23 @@
                   {/if}
                 </div>
 
-                <p class="text-[11px] text-zinc-300 leading-relaxed font-sans">{result.details}</p>
+                <p class="text-[11px] text-zinc-300 leading-relaxed font-sans font-medium">{result.details}</p>
 
                 {#if result.evidence}
-                  <div class="p-2.5 rounded-lg bg-zinc-950 font-mono text-[11px] text-zinc-400 border border-zinc-800/80 whitespace-pre-wrap max-h-24 overflow-y-auto">
-                    {result.evidence}
-                  </div>
+                  <details class="group bg-zinc-950 rounded-lg border border-zinc-800/80 overflow-hidden text-[11px]">
+                    <summary class="px-2.5 py-1.5 font-mono text-[10px] text-zinc-400 cursor-pointer hover:text-zinc-200 select-none flex items-center justify-between">
+                      <span>Evidência da Resposta</span>
+                      <span class="text-[9px] text-zinc-500 group-open:rotate-180 transition-transform">▼</span>
+                    </summary>
+                    <div class="p-2 border-t border-zinc-800/50 font-mono text-[10px] text-zinc-400 whitespace-pre-wrap max-h-32 overflow-y-auto bg-zinc-950/80 leading-relaxed">
+                      {result.evidence}
+                    </div>
+                  </details>
                 {/if}
 
-                <div class="p-2.5 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-[11px] text-indigo-200 leading-relaxed">
-                  <span class="font-bold text-indigo-300">Como Corrigir: </span>{result.remediation}
+                <div class="p-2 rounded-lg bg-indigo-950/20 border border-indigo-500/20 text-[11px] text-indigo-200 leading-normal flex items-start space-x-1.5">
+                  <span class="font-bold text-indigo-400 shrink-0">O que fazer:</span>
+                  <span>{result.remediation}</span>
                 </div>
               </div>
             {/if}

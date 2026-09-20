@@ -180,6 +180,18 @@ pub fn generate_stride_report(
         });
     }
 
+    // Deduplica lista de endpoints por categoria
+    fn deduplicate(endpoints: &mut Vec<String>) {
+        endpoints.sort();
+        endpoints.dedup();
+    }
+
+    deduplicate(&mut endpoints_with_missing_auth);
+    deduplicate(&mut endpoints_with_disclosure);
+    deduplicate(&mut endpoints_with_mutations);
+    deduplicate(&mut endpoints_with_unpaged_queries);
+    deduplicate(&mut endpoints_with_privilege_risks);
+
     let high_risk_count = threats
         .iter()
         .filter(|t| t.risk_level == "critical" || t.risk_level == "high")

@@ -352,7 +352,6 @@ class RelayState {
 
   activeVariables = $derived.by((): Record<string, string> => {
     return {
-      baseUrl: `http://${this.config.targetHost}:${this.config.targetPort}`,
       ...this.extractedVariables,
     };
   });
@@ -818,6 +817,14 @@ class RelayState {
 
   selectJwt(jwt: ExtractedJwt | null): void {
     this.selectedJwt = jwt;
+  }
+
+  removeJwt(token: string): void {
+    this.jwts = this.jwts.filter(j => j.token !== token);
+    if (this.selectedJwt?.token === token) {
+      this.selectedJwt = this.jwts[0] || null;
+    }
+    saveJwtsToStorage(this.jwts);
   }
 
   clearJwts(): void {

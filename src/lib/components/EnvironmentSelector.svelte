@@ -146,25 +146,25 @@
   <!-- Botão Discreto e Objetivo no Header -->
   <button
     onclick={handleToggleOpen}
-    class="h-8 flex items-center space-x-2 text-xs px-2.5 rounded-lg bg-zinc-900 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 text-zinc-200 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0 active:scale-[0.98]"
-    title={isTargetActive ? `Alvo ativo e respondendo em ${relayState.config.targetHost}:${relayState.config.targetPort}` : `Alvo configurado: ${relayState.config.targetHost}:${relayState.config.targetPort}`}
+    class="h-8 flex items-center space-x-1.5 text-xs px-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 text-zinc-200 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0 active:scale-[0.98]"
+    title={isTargetActive ? `Alvo Online: Respondendo em ${relayState.config.targetHost}:${relayState.config.targetPort} (Clique para alterar)` : `Alvo Offline: Nenhuma resposta em ${relayState.config.targetHost}:${relayState.config.targetPort} (Clique para alterar)`}
   >
-    <span
-      class="w-2 h-2 rounded-full shrink-0 transition-colors {isTargetActive ? 'bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.7)]' : 'bg-zinc-500'}"
-    ></span>
+    <span class="relative flex h-2 w-2 shrink-0">
+      {#if isTargetActive}
+        <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+        <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+      {:else}
+        <span class="inline-flex rounded-full h-2 w-2 bg-zinc-600"></span>
+      {/if}
+    </span>
     {#if relayState.config.targetHost && relayState.config.targetPort}
       <span class="font-mono text-xs font-semibold text-zinc-100">
-        {relayState.config.targetHost}:{relayState.config.targetPort}
+        <span class="hidden xl:inline">{relayState.config.targetHost}:</span>{relayState.config.targetPort}
       </span>
     {:else}
-      <span class="text-xs text-zinc-400 italic">○ Nenhum Alvo Selecionado</span>
+      <span class="text-xs text-zinc-400 italic">○ Sem Alvo</span>
     {/if}
-    {#if isTargetActive}
-      <span class="text-[9px] px-1.5 py-0.2 rounded font-mono uppercase bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-medium hidden md:inline">
-        online
-      </span>
-    {/if}
-    <span class="text-zinc-500 text-[10px] ml-0.5">▾</span>
+    <span class="text-zinc-500 text-[10px]">▾</span>
   </button>
 
   <!-- Dropdown de Portas & Ambientes -->
@@ -176,6 +176,26 @@
     ></div>
 
     <div class="absolute left-0 mt-2 w-80 bg-zinc-900/95 backdrop-blur-md border border-zinc-800 rounded-xl shadow-2xl z-40 p-3 space-y-3 text-xs">
+      <!-- Status do Alvo Ativo -->
+      <div class="p-2.5 rounded-lg bg-zinc-950/80 border border-zinc-800/80 flex items-center justify-between">
+        <div class="flex items-center space-x-2 min-w-0">
+          <span class="relative flex h-2 w-2 shrink-0">
+            {#if isTargetActive}
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            {:else}
+              <span class="inline-flex rounded-full h-2 w-2 bg-zinc-600"></span>
+            {/if}
+          </span>
+          <span class="font-mono text-xs font-semibold text-zinc-100 truncate">
+            {relayState.config.targetHost}:{relayState.config.targetPort}
+          </span>
+        </div>
+        <span class="text-[10px] px-2 py-0.5 rounded-full font-mono uppercase font-bold shrink-0 {isTargetActive ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-zinc-800 text-zinc-400'}">
+          {isTargetActive ? 'Online' : 'Offline'}
+        </span>
+      </div>
+
       <!-- Seção: Portas Locais Detectadas -->
       <div class="space-y-1.5">
         <div class="flex items-center justify-between text-zinc-400 border-b border-zinc-800 pb-1.5">

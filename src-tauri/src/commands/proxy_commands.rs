@@ -774,6 +774,7 @@ pub async fn run_active_probe(
     app: AppHandle,
     state: State<'_, Arc<AppState>>,
     exchange_id: String,
+    exchange_fallback: Option<crate::proxy::recorder::HttpExchange>,
     probe_type: crate::security::ProbeType,
     token_b: Option<String>,
 ) -> Result<crate::security::ActiveProbeResult, String> {
@@ -787,6 +788,7 @@ pub async fn run_active_probe(
         lock.iter()
             .find(|e| e.id == exchange_id)
             .cloned()
+            .or(exchange_fallback)
             .ok_or_else(|| format!("Requisição '{}' não encontrada no histórico.", exchange_id))?
     };
 

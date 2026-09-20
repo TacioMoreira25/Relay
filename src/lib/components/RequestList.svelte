@@ -10,6 +10,7 @@
     IconDownload,
     IconCheck,
     IconSquare,
+    IconFilter,
   } from "$lib/components/icons";
   import type { SavedRequestTemplate, HttpExchange } from "$lib/types";
   import { invoke } from "@tauri-apps/api/core";
@@ -28,6 +29,7 @@
   let showCollectionExampleModal = $state(false);
   let copyFeedback = $state<string | null>(null);
   let isDiagnosticModalOpen = $state(false);
+  let isFilterPopoverOpen = $state(false);
 
   let hasLoopingTraffic = $derived(
     relayState.exchanges.slice(0, 20).filter(
@@ -276,7 +278,7 @@
 
 <div class="flex flex-col h-full bg-zinc-950 text-zinc-200 select-none">
   <!-- Header Compacto e Minimalista -->
-  <div class="p-2.5 border-b border-zinc-800/80 bg-zinc-900/30 space-y-2">
+  <div class="p-2.5 border-b border-zinc-800/70 bg-zinc-900/60 backdrop-blur-xs space-y-2">
     <!-- Linha 1: Abas Principais + Botões de Ação -->
     <div class="flex items-center justify-between gap-1.5 min-w-0">
       <div class="flex items-center space-x-0.5 bg-zinc-950 p-0.5 rounded-lg border border-zinc-800/80 text-xs flex-1 min-w-0">
@@ -359,98 +361,145 @@
       {/if}
     </div>
 
-    <!-- Linha 2: Busca Rápida -->
-    <div class="relative">
-      <IconSearch size={13} class="absolute left-2.5 top-2.5 text-zinc-500 pointer-events-none" />
-      <input
-        type="text"
-        placeholder={relayState.sidebarTab === 'history' ? "Filtrar tráfego... (Ctrl+K)" : "Filtrar rotas ou pastas..."}
-        bind:value={relayState.searchQuery}
-        class="w-full bg-zinc-950 border border-zinc-800 rounded-md pl-8 pr-2.5 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-600 font-mono transition-colors"
-      />
-    </div>
+    <!-- Linha 2: Busca Rápida + Popover de Filtro Compacto Integrado -->
+    <div class="relative flex items-center gap-1.5">
+      <div class="relative flex-1">
+        <IconSearch size={13} class="absolute left-2.5 top-2.5 text-zinc-500 pointer-events-none" />
+        <input
+          type="text"
+          placeholder={relayState.sidebarTab === 'history' ? "Filtrar tráfego... (Ctrl+K)" : "Filtrar rotas ou pastas..."}
+          bind:value={relayState.searchQuery}
+          class="w-full bg-zinc-950 border border-zinc-800 rounded-lg pl-8 pr-8 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-zinc-700 font-mono transition-colors"
+        />
 
-    <!-- Linha 3: Filtro por Método HTTP -->
-    <div class="grid grid-cols-6 gap-1 font-mono text-[10px] select-none w-full">
-      {#each methods as m}
+        {#if relayState.methodFilter !== 'ALL'}
+          <span class="absolute right-2 top-2 text-[9px] px-1 py-0.2 rounded font-mono font-bold border {getMethodBadgeStyle(relayState.methodFilter)}">
+            {relayState.methodFilter}
+          </span>
+        {/if}
+      </div>
+
+      <!-- Botão Único de Filtro Popover -->
+      <div class="relative shrink-0">
         <button
-          onclick={() => (relayState.methodFilter = m)}
-          class="py-0.5 rounded border transition-all cursor-pointer text-center truncate {getMethodPillActiveStyle(m)}"
+          onclick={() => (isFilterPopoverOpen = !isFilterPopoverOpen)}
+          class="h-8 px-2.5 rounded-lg border transition-all flex items-center space-x-1.5 cursor-pointer text-xs shrink-0 active:scale-[0.98] {relayState.methodFilter !== 'ALL' || relayState.hidePolling || relayState.historySourceFilter !== 'ALL' ? 'bg-indigo-600/20 border-indigo-500/50 text-indigo-300 font-medium' : 'bg-zinc-950 hover:bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200'}"
+          title="Filtros por Método HTTP, Origem e Polling"
         >
-          {m}
+          <IconFilter size={13} class="shrink-0" />
+          <span class="hidden sm:inline text-[11px]">Filtros</span>
+          <span class="text-[9px] text-zinc-500">▾</span>
         </button>
-      {/each}
+
+        {#if isFilterPopoverOpen}
+          <!-- Backdrop para fechar ao clicar fora -->
+          <div
+            class="fixed inset-0 z-40"
+            onclick={() => (isFilterPopoverOpen = false)}
+            role="presentation"
+          ></div>
+
+          <!-- Popover Compacto -->
+          <div class="absolute right-0 mt-2 w-64 bg-zinc-900 border border-zinc-800 rounded-xl p-3 shadow-2xl z-50 space-y-3 text-xs select-none">
+            <div class="flex items-center justify-between border-b border-zinc-800 pb-1.5 text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
+              <span>Método HTTP</span>
+              {#if relayState.methodFilter !== 'ALL'}
+                <button
+                  onclick={() => (relayState.methodFilter = 'ALL')}
+                  class="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer lowercase"
+                >
+                  limpar
+                </button>
+              {/if}
+            </div>
+
+            <!-- Grade de Métodos HTTP Compacta -->
+            <div class="grid grid-cols-3 gap-1 font-mono text-[10px]">
+              {#each methods as m}
+                <button
+                  onclick={() => { relayState.methodFilter = m; }}
+                  class="py-1 px-1.5 rounded border transition-all cursor-pointer text-center truncate {getMethodPillActiveStyle(m)}"
+                >
+                  {m}
+                </button>
+              {/each}
+            </div>
+
+            {#if relayState.sidebarTab === 'history'}
+              <!-- Seção Origem do Tráfego -->
+              <div class="pt-2 border-t border-zinc-800/80 space-y-1.5">
+                <span class="text-[10px] uppercase font-bold text-zinc-400 tracking-wider block">Origem do Tráfego</span>
+                <div class="flex items-center space-x-1 bg-zinc-950 p-1 rounded-lg border border-zinc-800/80 font-mono text-[10px]">
+                  <button
+                    onclick={() => (relayState.historySourceFilter = "ALL")}
+                    class="flex-1 py-1 rounded text-center transition-colors cursor-pointer {relayState.historySourceFilter === 'ALL' ? 'bg-zinc-800 text-zinc-100 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
+                  >
+                    Todas
+                  </button>
+                  <button
+                    onclick={() => (relayState.historySourceFilter = "MANUAL")}
+                    class="flex-1 py-1 rounded text-center transition-colors cursor-pointer {relayState.historySourceFilter === 'MANUAL' ? 'bg-indigo-600/30 text-indigo-300 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
+                  >
+                    Manual
+                  </button>
+                  <button
+                    onclick={() => (relayState.historySourceFilter = "AUTO")}
+                    class="flex-1 py-1 rounded text-center transition-colors cursor-pointer {relayState.historySourceFilter === 'AUTO' ? 'bg-zinc-800 text-zinc-100 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
+                  >
+                    Auto
+                  </button>
+                </div>
+              </div>
+
+              <!-- Seção Ocultar Polling -->
+              <div class="pt-2 border-t border-zinc-800/80">
+                <button
+                  onclick={() => (relayState.hidePolling = !relayState.hidePolling)}
+                  class="w-full py-1.5 px-2 rounded-lg text-[10px] font-mono transition-all cursor-pointer flex items-center justify-between border {relayState.hidePolling ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 font-medium' : 'bg-zinc-950 border-zinc-800 text-zinc-400 hover:text-zinc-200'}"
+                >
+                  <span>Ocultar Polling Repetido</span>
+                  <span>{relayState.hidePolling ? 'SIM' : 'NÃO'}</span>
+                </button>
+              </div>
+            {/if}
+          </div>
+        {/if}
+      </div>
     </div>
 
-    <!-- Linha 4: Filtros Específicos de Histórico OU Barra de Ação de Seleção -->
-    {#if relayState.sidebarTab === 'history' && relayState.totalRequests > 0}
-      {#if isSelectMode}
-        <div class="flex items-center justify-between bg-zinc-900/90 border border-indigo-500/40 rounded-lg px-2 py-1 text-xs">
-          <div class="flex items-center space-x-1.5 text-[11px]">
-            <button
-              onclick={toggleSelectAll}
-              class="text-indigo-300 hover:text-indigo-200 transition-colors cursor-pointer underline text-[10px]"
-            >
-              {selectedIds.length === relayState.filteredExchanges.length && relayState.filteredExchanges.length > 0 ? "Desmarcar" : "Marcar todas"}
-            </button>
-            <span class="text-zinc-600">•</span>
-            <span class="text-zinc-400 font-mono text-[10px]">{selectedIds.length}</span>
-          </div>
-
-          <div class="flex items-center space-x-1.5">
-            <button
-              onclick={() => { isSelectMode = false; selectedIds = []; }}
-              class="text-[10px] px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
-            >
-              Cancelar
-            </button>
-            <button
-              onclick={deleteSelected}
-              disabled={selectedIds.length === 0}
-              class="text-[10px] px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-medium transition-colors cursor-pointer disabled:opacity-40"
-            >
-              Apagar ({selectedIds.length})
-            </button>
-          </div>
-        </div>
-      {:else}
-        <div class="flex items-center justify-between text-[10px] select-none pt-0.5 gap-1 min-w-0">
-          <div class="flex items-center space-x-0.5 bg-zinc-950 p-0.5 rounded-md border border-zinc-800/80 font-mono shrink-0">
-            <button
-              onclick={() => (relayState.historySourceFilter = "ALL")}
-              class="px-1.5 py-0.5 rounded transition-colors cursor-pointer {relayState.historySourceFilter === 'ALL' ? 'bg-zinc-800 text-zinc-100 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
-              title="Todas as requisições capturadas e manuais"
-            >
-              Todas
-            </button>
-            <button
-              onclick={() => (relayState.historySourceFilter = "MANUAL")}
-              class="px-1.5 py-0.5 rounded transition-colors cursor-pointer {relayState.historySourceFilter === 'MANUAL' ? 'bg-indigo-600/30 text-indigo-300 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
-              title="Apenas requisições disparadas manualmente pelo Replay"
-            >
-              Manual
-            </button>
-            <button
-              onclick={() => (relayState.historySourceFilter = "AUTO")}
-              class="px-1.5 py-0.5 rounded transition-colors cursor-pointer {relayState.historySourceFilter === 'AUTO' ? 'bg-zinc-800 text-zinc-100 font-bold shadow-xs' : 'text-zinc-500 hover:text-zinc-300'}"
-              title="Apenas requisições capturadas do navegador/aplicação"
-            >
-              Auto
-            </button>
-          </div>
-
+    <!-- Barra de Ação de Seleção Múltipla -->
+    {#if relayState.sidebarTab === 'history' && isSelectMode}
+      <div class="flex items-center justify-between bg-zinc-900/90 border border-indigo-500/40 rounded-lg px-2 py-1 text-xs">
+        <div class="flex items-center space-x-1.5 text-[11px]">
           <button
-            onclick={() => (relayState.hidePolling = !relayState.hidePolling)}
-            class="px-2 py-1 rounded-md text-[10px] font-mono transition-all cursor-pointer flex items-center space-x-1 border shrink-0 {relayState.hidePolling ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 font-medium' : 'bg-zinc-950 border-zinc-800/80 text-zinc-500 hover:text-zinc-300'}"
-            title="Oculta requisições repetidas idênticas em curto intervalo (polling contínuo do frontend)"
+            onclick={toggleSelectAll}
+            class="text-indigo-300 hover:text-indigo-200 transition-colors cursor-pointer underline text-[10px]"
           >
-            <span>{relayState.hidePolling ? "Sem Polling" : "Ocultar Polling"}</span>
+            {selectedIds.length === relayState.filteredExchanges.length && relayState.filteredExchanges.length > 0 ? "Desmarcar" : "Marcar todas"}
+          </button>
+          <span class="text-zinc-600">•</span>
+          <span class="text-zinc-400 font-mono text-[10px]">{selectedIds.length}</span>
+        </div>
+
+        <div class="flex items-center space-x-1.5">
+          <button
+            onclick={() => { isSelectMode = false; selectedIds = []; }}
+            class="text-[10px] px-2 py-0.5 rounded bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-colors cursor-pointer"
+          >
+            Cancelar
+          </button>
+          <button
+            onclick={deleteSelected}
+            disabled={selectedIds.length === 0}
+            class="text-[10px] px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-500 text-white font-medium transition-colors cursor-pointer disabled:opacity-40"
+          >
+            Apagar ({selectedIds.length})
           </button>
         </div>
-      {/if}
+      </div>
     {/if}
 
-    <!-- Alerta Didático de Tráfego em Loop (Se detectado) -->
+    <!-- Indicador Didático de Tráfego em Loop (Se detectado) -->
     {#if hasLoopingTraffic && relayState.sidebarTab === 'history'}
       <button
         onclick={() => (isDiagnosticModalOpen = true)}
@@ -459,7 +508,7 @@
       >
         <div class="flex items-center space-x-1.5 truncate">
           <span class="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse shrink-0"></span>
-          <span class="truncate">Tráfego repetido / 404 detectado no projeto</span>
+          <span class="truncate">Tráfego repetido / 404 detectado</span>
         </div>
         <span class="underline shrink-0 ml-1 font-mono font-medium">Diagnóstico</span>
       </button>
@@ -627,13 +676,22 @@
                     onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') onOpenTemplate(tpl); }}
                     class="px-3 py-2 text-left w-full hover:bg-zinc-900/70 transition-colors cursor-pointer flex flex-col space-y-0.5 group border-l-2 border-transparent hover:border-amber-500/60 pl-6"
                   >
-                    <div class="flex items-center space-x-2 font-mono text-xs">
-                      <span class="px-1.5 py-0.2 rounded text-[9px] font-bold border {getMethodBadgeStyle(tpl.method)}">
-                        {tpl.method}
-                      </span>
-                      <span class="text-xs font-medium text-zinc-200 truncate group-hover:text-amber-200 transition-colors">
-                        {tpl.name}
-                      </span>
+                    <div class="flex items-center justify-between font-mono text-xs">
+                      <div class="flex items-center space-x-2 truncate">
+                        <span class="px-1.5 py-0.2 rounded text-[9px] font-bold border {getMethodBadgeStyle(tpl.method)}">
+                          {tpl.method}
+                        </span>
+                        <span class="text-xs font-medium text-zinc-200 truncate group-hover:text-amber-200 transition-colors">
+                          {tpl.name}
+                        </span>
+                      </div>
+                      <button
+                        onclick={(e) => { e.stopPropagation(); relayState.deleteTemplate(tpl.id); }}
+                        class="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-400 p-0.5 rounded transition-opacity cursor-pointer ml-1"
+                        title="Excluir rota da coleção"
+                      >
+                        <IconTrash size={12} />
+                      </button>
                     </div>
 
                     <div class="text-[11px] font-mono text-zinc-500 truncate" title={tpl.uri}>
@@ -660,11 +718,20 @@
                 {tpl.method}
               </span>
 
-              {#if tpl.tag}
-                <span class="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 font-sans truncate max-w-[120px]">
-                  {tpl.tag}
-                </span>
-              {/if}
+              <div class="flex items-center space-x-1.5">
+                {#if tpl.tag}
+                  <span class="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700 font-sans truncate max-w-[120px]">
+                    {tpl.tag}
+                  </span>
+                {/if}
+                <button
+                  onclick={(e) => { e.stopPropagation(); relayState.deleteTemplate(tpl.id); }}
+                  class="opacity-0 group-hover:opacity-100 text-zinc-500 hover:text-rose-400 p-0.5 rounded transition-opacity cursor-pointer ml-1"
+                  title="Excluir rota da coleção"
+                >
+                  <IconTrash size={12} />
+                </button>
+              </div>
             </div>
 
             <div class="text-xs font-semibold text-zinc-200 truncate group-hover:text-white transition-colors">

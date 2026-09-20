@@ -35,21 +35,26 @@
   <!-- Botão Gatilho na TopBar -->
   <button
     onclick={() => (isOpen = !isOpen)}
-    class="h-8 flex items-center space-x-1.5 bg-zinc-900 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 px-2.5 rounded-lg text-xs font-mono text-zinc-300 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0 active:scale-[0.98]"
-    title="Alternar ou gerenciar projetos de APIs"
+    class="h-8 flex items-center space-x-1.5 bg-zinc-900 hover:bg-zinc-800/90 border border-zinc-800 hover:border-zinc-700 px-2 rounded-xl text-xs font-mono text-zinc-300 transition-all cursor-pointer shadow-xs whitespace-nowrap shrink-0 active:scale-[0.98]"
+    title={`Projeto: ${relayState.activeProject.name} (Clique para alternar ou gerenciar)`}
   >
     <IconFolder size={13} class="text-indigo-400 shrink-0" />
-    <span class="font-semibold text-zinc-100 max-w-[70px] sm:max-w-[120px] lg:max-w-[160px] truncate">{relayState.activeProject.name}</span>
+    <span class="font-semibold text-zinc-100 max-w-[50px] sm:max-w-[90px] md:max-w-[140px] truncate">{relayState.activeProject.name}</span>
     <span class="text-zinc-500 text-[10px]">▾</span>
   </button>
 
   <!-- Dropdown de Projetos -->
   {#if isOpen}
     <div
+      class="fixed inset-0 z-40"
+      onclick={() => (isOpen = false)}
+      role="presentation"
+    ></div>
+
+    <div
       role="menu"
       tabindex="0"
       class="absolute left-0 top-10 w-72 bg-zinc-900/95 backdrop-blur-md border border-zinc-800 rounded-xl shadow-2xl p-2 z-50 space-y-2 font-mono text-xs text-zinc-200"
-      onmouseleave={() => (isOpen = false)}
     >
       <div class="flex items-center justify-between px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-400 select-none">
         <span>Projetos ({relayState.projects.length})</span>

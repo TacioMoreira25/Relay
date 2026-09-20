@@ -28,7 +28,9 @@ Construido com arquitetura nativa em **Rust (Tokio + Hyper)** e **Tauri v2 com S
 * **Auto-Descoberta de Portas:** Escaneamento nao-bloqueante e neutro de portas e servicos locais de desenvolvimento.
 * **Gerenciamento de Ambientes:** Alternancia rapida entre servicos locais, rotas de mock e endpoints de homologacao.
 * **Captura Inteligente de Sessao:** Deteccao automatica e decodificacao de tokens JWT no trafego e em chamadas de replay.
+* **Seguranca Shift-Left & STRIDE:** Auditoria passiva DAST, testes ativos de seguranca (BOLA/IDOR, Mass Assignment, Auth Bypass) e modelagem de ameacas STRIDE com mapa de fronteiras de confianca.
 * **Interface Fluida:** Reatividade nativa sem Virtual DOM utilizando Svelte 5 Runes.
+
 
 ---
 
@@ -152,3 +154,5 @@ sequenceDiagram
 | **Export & CA** | Exportacao para HAR 1.2, OpenAPI 3.0 e geracao de certificados CA locais |
 | **Multi-Projetos & Colecoes** | Workspaces isolados, importador OpenAPI/Postman, pastas em arvore e salvamento direto do historico |
 | **Ambientes & Scanner** | Deteccao assincrona de portas ativas no Linux e alvos personalizados |
+| **Seguranca Shift-Left & STRIDE** | Auditoria passiva DAST, testes ativos (BOLA, IDOR, Mass Assignment) e modelagem de ameacas STRIDE |
+

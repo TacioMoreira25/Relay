@@ -10,6 +10,7 @@ O Relay opera através de uma arquitetura híbrida dividida em dois domínios pr
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Svelte 5 Frontend (UI)                          │
 │  ProjectSelector │ RequestList │ Inspector │ ReplayModal │ JwtManager  │
+│  SecurityDashboard (DAST & Probes) │ StrideMap (Threat Modeling)       │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ (Tauri v2 IPC Events & Commands)
 ┌───────────────────────────────────▼────────────────────────────────────┐
@@ -27,6 +28,9 @@ O Relay opera através de uma arquitetura híbrida dividida em dois domínios pr
 │  ├─────────────────────────┤  ├─────────────────────────────────────┤  │
 │  │   Prefix Route Resolver │  │   Root CA Certificate Generator     │  │
 │  │   (Multi-target Proxy)  │  │   (rcgen X.509 Cryptography)        │  │
+│  ├─────────────────────────┤  ├─────────────────────────────────────┤  │
+│  │   Security DAST Engine  │  │   Active Probes & STRIDE Engine     │  │
+│  │   (Passive Rules Engine)│  │   (BOLA, IDOR, Mass Assignment)     │  │
 │  └─────────────────────────┘  └─────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -43,4 +47,8 @@ O Relay opera através de uma arquitetura híbrida dividida em dois domínios pr
 6. [Exportação HAR, OpenAPI 3.0 & HTTPS CA](features/06-export-and-https.md)
 7. [Roteamento Declarativo por Prefixo & Arquivo de Configuração](features/07-declarative-routing-and-config.md)
 8. [Otimizações Linux & Atalhos de Teclado](features/08-linux-and-keyboard-shortcuts.md)
-9. [Gerenciamento de Projetos, Importação de Coleções e Pastas](features/11-projects-and-collections.md)
+9. [Rotas de Mock & Ambientes](features/09-mock-routes-and-environments.md)
+10. [Diff Visual de Payloads & Gerador cURL](features/10-visual-diff-and-curl.md)
+11. [Gerenciamento de Projetos, Importação de Coleções e Pastas](features/11-projects-and-collections.md)
+12. [Segurança Shift-Left: Auditoria DAST, Provas Ativas e Modelagem STRIDE](features/12-shift-left-security-and-stride.md)
+

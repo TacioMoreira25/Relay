@@ -39,17 +39,15 @@
 </script>
 
 <div class="relative inline-block">
-  <!-- Botão Discreto no TopBar -->
+  <!-- Botão no Grupo de Ferramentas -->
   <button
     onclick={() => (isOpen = !isOpen)}
-    class="h-8 text-xs px-2.5 rounded-lg border transition-all flex items-center space-x-1.5 cursor-pointer shadow-xs whitespace-nowrap shrink-0 active:scale-[0.98] {hasChaosActive ? 'bg-amber-500/15 border-amber-500/40 text-amber-300 font-bold' : 'bg-zinc-900 hover:bg-zinc-800/90 border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-zinc-200'}"
-    title="Simular Internet Lenta e Falhas de Backend (Chaos Testing)"
+    class="h-7 text-xs transition-all flex items-center cursor-pointer active:scale-[0.95] shrink-0 {hasChaosActive ? 'px-2 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold space-x-1' : 'w-7 rounded-lg text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 justify-center'}"
+    title={hasChaosActive ? `Simulacao de Rede Ativa: ${relayState.config.latencyMs}ms, ${Math.round(relayState.config.simulateFailureRate * 100)}% falhas (Clique para configurar)` : "Simulador de Rede & Caos (Latencia e Falhas HTTP)"}
   >
     <IconActivity size={13} class="shrink-0 {hasChaosActive ? 'text-amber-400 animate-pulse' : 'text-zinc-400'}" />
     {#if hasChaosActive}
-      <span class="text-[11px] font-mono">{relayState.config.latencyMs}ms | {Math.round(relayState.config.simulateFailureRate * 100)}%</span>
-    {:else}
-      <span class="font-medium hidden lg:inline">Simular Rede</span>
+      <span class="text-[10px] font-mono">{relayState.config.latencyMs}ms | {Math.round(relayState.config.simulateFailureRate * 100)}%</span>
     {/if}
   </button>
 
