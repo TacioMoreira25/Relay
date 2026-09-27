@@ -4,6 +4,7 @@
   import { IconPlay, IconKey, IconSparkles, IconTerminal, IconBookmark, IconTrash } from "$lib/components/icons";
   import { invoke } from "@tauri-apps/api/core";
   import { onMount } from "svelte";
+  import { getMethodBadgeClass } from "$lib/utils";
 
   let {
     isOpen = $bindable(false),
@@ -323,17 +324,6 @@
       closeModal();
     }, 1500);
   }
-
-  function getMethodColorClass(m: string): string {
-    switch (m) {
-      case "GET": return "text-sky-400 bg-sky-950/40 border-sky-500/40";
-      case "POST": return "text-emerald-400 bg-emerald-950/40 border-emerald-500/40";
-      case "PUT": return "text-amber-400 bg-amber-950/40 border-amber-500/40";
-      case "DELETE": return "text-rose-400 bg-rose-950/40 border-rose-500/40";
-      case "PATCH": return "text-purple-400 bg-purple-950/40 border-purple-500/40";
-      default: return "text-zinc-300 bg-zinc-900 border-zinc-700";
-    }
-  }
 </script>
 
 <!-- Backdrop com clique para fechar -->
@@ -438,7 +428,7 @@
       <div class="flex items-center space-x-1 bg-zinc-950 border border-zinc-800 rounded-lg p-1 focus-within:border-indigo-500 transition-colors">
         <select
           bind:value={method}
-          class="rounded px-2.5 py-1.5 text-xs font-mono font-bold focus:outline-none cursor-pointer border {getMethodColorClass(method)}"
+          class="rounded px-2.5 py-1.5 text-xs font-mono font-bold focus:outline-none cursor-pointer border {getMethodBadgeClass(method)}"
         >
           <option value="GET">GET</option>
           <option value="POST">POST</option>

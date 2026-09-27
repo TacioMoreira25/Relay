@@ -21,10 +21,16 @@
       color: "text-sky-400",
     },
     {
-      title: "Como usar no Frontend?",
-      desc: `Basta mudar a URL base da sua API no frontend de 'http://localhost:3000' para 'http://localhost:${relayState.config.listenPort}'. Todas as chamadas, logins e dados passarão automaticamente pelo Relay.`,
+      title: "Como usar em um Novo Projeto?",
+      desc: `Basta mudar a baseURL da sua API no frontend para a porta do Relay (ex: 'http://localhost:${relayState.config.listenPort}'). As portas 8080 e 3000 são apenas exemplos padrão: você e sua equipe podem utilizar livremente quaisquer portas configuradas no seu ambiente.`,
       icon: IconFileJson,
       color: "text-emerald-400",
+    },
+    {
+      title: "WebSockets & Rotas de Infraestrutura",
+      desc: "Para evitar tempestades de requisições e loops de reconexão, rotas de WebSocket (ex: /socket.io) devem apontar direto para o backend (ou ter 'ws: true' no proxy do frontend). O Relay silencia pings de infraestrutura em segundo plano para manter sua tela limpa.",
+      icon: IconActivity,
+      color: "text-cyan-400",
     },
     {
       title: "Auto-Captura & Injeção de JWT",

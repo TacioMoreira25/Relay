@@ -16,6 +16,15 @@
     IconShield,
   } from "$lib/components/icons";
 
+  import {
+    createClipboardFeedback,
+    generateCurl,
+    getMethodBadgeClass,
+    getStatusCodeBadgeClass,
+    formatBytes,
+    formatDuration,
+  } from "$lib/utils";
+
   let {
     onOpenNewRequest = () => {},
     onToggleProxy = () => {}
@@ -30,6 +39,8 @@
   let isReplayOpen = $state<boolean>(false);
   let isProbesOpen = $state<boolean>(false);
   let saveFeedback = $state<boolean>(false);
+
+  const copyToClipboard = createClipboardFeedback((id) => (copyFeedback = id));
 
   function handleSaveToCollection(): void {
     if (!exchange) return;
@@ -49,48 +60,6 @@
       return { formatted: JSON.stringify(parsed, null, 2), isJson: true };
     } catch {
       return { formatted: bodyStr, isJson: false };
-    }
-  }
-
-  function generateCurl(ex: NonNullable<typeof exchange>): string {
-    const method = ex.request.method;
-    const url = `http://${relayState.config.targetHost}:${relayState.config.targetPort}${ex.request.uri}`;
-    let curl = `curl -i -X ${method} "${url}"`;
-
-    for (const h of ex.request.headers) {
-      if (!h.key.toLowerCase().startsWith("content-length") && !h.key.toLowerCase().startsWith("host")) {
-        curl += ` \\\n  -H "${h.key}: ${h.value}"`;
-      }
-    }
-
-    if (ex.request.body && ex.request.body.trim()) {
-      const escapedBody = ex.request.body.replace(/"/g, '\\"');
-      curl += ` \\\n  -d "${escapedBody}"`;
-    }
-
-    return curl;
-  }
-
-  async function copyToClipboard(text: string, label: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(text);
-      copyFeedback = label;
-      setTimeout(() => {
-        if (copyFeedback === label) copyFeedback = null;
-      }, 2000);
-    } catch (err) {
-      console.error("Falha ao copiar:", err);
-    }
-  }
-
-  function getMethodColorClass(m: string): string {
-    switch (m.toUpperCase()) {
-      case "GET": return "text-sky-400 bg-sky-500/10 border-sky-500/20";
-      case "POST": return "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
-      case "PUT": return "text-amber-400 bg-amber-500/10 border-amber-500/20";
-      case "DELETE": return "text-rose-400 bg-rose-500/10 border-rose-500/20";
-      case "PATCH": return "text-purple-400 bg-purple-500/10 border-purple-500/20";
-      default: return "text-zinc-300 bg-zinc-500/10 border-zinc-500/20";
     }
   }
 </script>
@@ -151,7 +120,7 @@
     <div class="h-12 border-b border-zinc-800/80 bg-zinc-900/60 backdrop-blur-xs px-3 sm:px-4 flex items-center justify-between shrink-0 gap-3">
       <!-- Lado Esquerdo: Identificador da Requisicao -->
       <div class="flex items-center space-x-2 min-w-0 overflow-hidden shrink-0">
-        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded-md border shrink-0 {getMethodColorClass(exchange.request.method)}">
+        <span class="text-xs font-mono font-bold px-2 py-0.5 rounded-md border shrink-0 {getMethodBadgeClass(exchange.request.method)}">
           {exchange.request.method}
         </span>
         <span class="text-xs font-mono text-zinc-200 truncate max-w-xs sm:max-w-md font-medium" title={exchange.request.uri}>
@@ -307,7 +276,7 @@
             <div class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                  Payload Body ({exchange.request.sizeBytes} bytes)
+                  Payload Body ({formatBytes(exchange.request.sizeBytes)})
                 </span>
               </div>
 
@@ -331,19 +300,19 @@
             <div class="flex items-center space-x-3 text-xs font-mono bg-zinc-900/40 p-2.5 rounded-lg border border-zinc-800/60">
               <div class="flex items-center space-x-1.5">
                 <span class="text-zinc-500">Status:</span>
-                <span class="font-bold px-1.5 py-0.2 rounded {res.statusCode >= 200 && res.statusCode < 300 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'}">
+                <span class="font-bold px-1.5 py-0.2 rounded border {getStatusCodeBadgeClass(res.statusCode)}">
                   {res.statusCode}
                 </span>
               </div>
 
               <div class="flex items-center space-x-1.5">
                 <span class="text-zinc-500">Latência:</span>
-                <span class="text-zinc-300 font-medium">{res.durationMs} ms</span>
+                <span class="text-zinc-300 font-medium">{formatDuration(res.durationMs)}</span>
               </div>
 
               <div class="flex items-center space-x-1.5">
                 <span class="text-zinc-500">Tamanho:</span>
-                <span class="text-zinc-300 font-medium">{res.sizeBytes} bytes</span>
+                <span class="text-zinc-300 font-medium">{formatBytes(res.sizeBytes)}</span>
               </div>
             </div>
 
@@ -424,7 +393,7 @@
               <div class="space-y-2">
                 <div class="flex items-center justify-between">
                   <span class="text-[11px] font-bold uppercase tracking-wider text-zinc-400">
-                    Response Body ({res.sizeBytes} bytes)
+                    Response Body ({formatBytes(res.sizeBytes)})
                   </span>
                 </div>
 

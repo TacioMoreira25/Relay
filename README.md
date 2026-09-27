@@ -6,153 +6,165 @@
 ![Tauri](https://img.shields.io/badge/Tauri_v2-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)
 ![Svelte](https://img.shields.io/badge/Svelte_5-FF3E00?style=for-the-badge&logo=svelte&logoColor=white)
 ![TailwindCSS](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
-![Platform](https://img.shields.io/badge/Platform-Linux_(Fedora_·_Ubuntu_·_Arch_·_openSUSE)-4E9A06?style=for-the-badge&logo=linux&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Linux-4E9A06?style=for-the-badge&logo=linux&logoColor=white)
 
 **Utilitario desktop nativo, ultraleve e de alta performance para desenvolvedores.**  
-Proxy Reverso Local, Interceptador de Trafego HTTP, Inspecionador em Tempo Real e Replay de Requisicoes.
+Proxy reverso local, interceptador de trafego HTTP, inspecionador em tempo real, importador de colecoes e replay de requisicoes.
 
 </div>
 
 ---
 
-## Por que o Relay?
+## Recursos Principais
 
-O Relay foi projetado para substituir clientes pesados de API por um proxy leve e integrado ao seu fluxo diario de desenvolvimento.
-
-Construido com arquitetura nativa em **Rust (Tokio + Hyper)** e **Tauri v2 com Svelte 5**:
-* **Streaming Assincrono:** Repasse de trafego quase instantaneo com fatias de bytes em memoria.
-* **Sistema de Multi-Projetos & Colecoes:** Workspaces isolados com persistencia automatica para gerenciar rotas, mocks e colecoes; salve chamadas do historico na colecao com 1 clique.
-* **Inspecionador Fluido & Foco no Response:** Abertura direta na aba Response, layout com barra lateral redimensionavel e gerador de cURL.
-* **Filtros Anti-Ruido & Diagnostico Agnostico:** Filtro para ocultar polling e explicacoes didaticas para retries 404 e canais em tempo real para qualquer stack.
-* **Importador Universal:** Suporte nativo a importacao direta de arquivos OpenAPI 3.0 / Swagger e colecoes Postman v2.1 em pastas dinamicas.
-* **Auto-Descoberta de Portas:** Escaneamento nao-bloqueante e neutro de portas e servicos locais de desenvolvimento.
-* **Gerenciamento de Ambientes:** Alternancia rapida entre servicos locais, rotas de mock e endpoints de homologacao.
-* **Captura Inteligente de Sessao:** Deteccao automatica e decodificacao de tokens JWT no trafego e em chamadas de replay.
-* **Seguranca Shift-Left & STRIDE:** Auditoria passiva DAST, testes ativos de seguranca (BOLA/IDOR, Mass Assignment, Auth Bypass) e modelagem de ameacas STRIDE com mapa de fronteiras de confianca.
-* **Interface Fluida:** Reatividade nativa sem Virtual DOM utilizando Svelte 5 Runes.
-
+- **Proxy Assincrono Zero-Copy:** Repasse de trafego em fatias de memoria via Rust (Tokio + Hyper) com suporte a tunelamento WebSocket (HTTP 101).
+- **Inspecionador em Tempo Real:** Visualizacao instantanea de headers, query params, cookies e payloads com abertura direta na aba Response e gerador de comandos cURL.
+- **Importador Universal de Colecoes:** Importacao e organizacao automatica de colecoes OpenAPI 3.0 / Swagger, Postman Collection v2.1 e templates nativos do Relay.
+- **Filtros Anti-Ruido e Modo Silencioso:** Deteccao e amortecimento de tráfego de infraestrutura e reconexoes repetitivas sem poluir o historico util.
+- **Deteccao Inteligente de Sessao:** Decodificacao automatica de tokens JWT presentes em cabecalhos de autorizacao, cookies ou respostas da API.
+- **Replay & Chaos Engineering:** Disparo de chamadas manuais com variaveis dinamicas (`{{token}}`), simulacao de falhas de rede e latencia artificial com jitter.
+- **Seguranca Shift-Left & STRIDE:** Auditoria passiva DAST, testes ativos contra vulnerabilidades comuns (BOLA/IDOR, Mass Assignment, Auth Bypass) e modelagem de ameacas STRIDE.
 
 ---
 
-## Pré-requisitos (Linux)
+## Requisitos de Sistema
 
-Antes de compilar ou rodar o projeto, você precisa ter as dependências do **Node.js** e do **Rust/Tauri** instaladas no sistema.
+- **Linux:** Ubuntu/Debian/Mint, Fedora/RHEL ou Arch Linux.
+- **Node.js:** Versao 20 LTS ou superior.
+- **Rust & Cargo:** Versao 1.75 ou superior.
 
-**1. Dependências do Sistema (Ubuntu / Debian / Mint):**
+### Dependencias Nativas do Linux
+
+**Ubuntu / Debian / Mint:**
 ```bash
 sudo apt update
-sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+sudo apt install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 ```
 
-**2. Compilador Rust:**
+**Fedora / RHEL:**
+```bash
+sudo dnf install -y webkit2gtk4.1-devel curl wget file libappindicator-gtk3-devel librsvg2-devel gcc-c++
+```
+
+**Rust:**
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
-**3. Dependências do Node (Obrigatório antes do build):**
+---
+
+## Instalacao Rapida e Determinada
+
+Para evitar divergencias de versoes entre desenvolvedores, o repositorio possui dependencias travadas por versao exata (`save-exact`), configuracao `.npmrc` e um script de inicializacao automatizado:
+
 ```bash
-npm install
+# Clone o repositorio
+git clone https://github.com/TacioMoreira25/Relay.git
+cd Relay
 ```
+
+O script `./setup.sh` detecta automaticamente o estado da sua maquina:
+
+```bash
+./setup.sh
+```
+
+- **Se voce ja tem o Relay instalado no Linux (Fedora ou Debian/Ubuntu):**  
+  O script detecta a instalacao existente no sistema, compila a nova versao de producao e executa automaticamente a atualizacao (`sudo dnf reinstall -y` no Fedora ou `sudo dpkg -i` no Ubuntu/Debian). Seus dados, workspaces e colecoes permanecem intactos.
+- **Se voce ainda nao tem o Relay instalado no sistema:**  
+  O script prepara o ambiente de desenvolvimento instalando as dependencias com fidelidade estrita ao lockfile (`npm ci`) e validando o compilador Rust. Para rodar em modo de desenvolvimento com hot-reload, basta executar:
+  ```bash
+  npm run tauri dev
+  ```
+- **Parametros Opcionais:**
+  - `./setup.sh --install` : Forca a compilacao e instalacao do aplicativo desktop no sistema operacional.
+  - `./setup.sh --dev-only`: Prepara apenas as dependencias locais sem compilar o pacote desktop, mesmo que o app ja esteja instalado no sistema.
 
 ---
 
-## Compilação & Instalação
+## Guia Didatico de Uso
 
-Você pode compilar e instalar o Relay diretamente no seu sistema operacional Linux:
+Usar o Relay no seu fluxo diario exige apenas 3 etapas:
 
-### Opção 1: Instalar no Ubuntu / Debian / Mint (.deb)
+### 1. Iniciar o Relay
+Abra o Relay e configure as portas desejadas na barra superior:
+- **Porta do Proxy (Listen):** Porta onde o Relay vai escutar (exemplo: `8080`).
+- **Alvo Padrao (Upstream Target):** Endereco do seu backend em execucao (exemplo: `http://localhost:3000`).
+- Clique em **Iniciar Proxy**.
 
-```bash
-# Compila e gera o pacote Debian (Requer 'npm install' feito previamente)
-npm run tauri build -- --bundles deb
+### 2. Apontar o seu Frontend / Cliente
+No seu projeto cliente (Angular, React, Vue, app mobile ou script), aponte a URL base da API para o Relay:
 
-# Instala no sistema
-sudo dpkg -i src-tauri/target/release/bundle/deb/relay_0.1.0_amd64.deb
-```
+- **Exemplo com variaveis de ambiente:**
+  ```typescript
+  // Em desenvolvimento, as requisicoes passam pelo Relay:
+  export const environment = {
+    apiUrl: 'http://localhost:8080' // Porta configurada no Relay
+  };
+  ```
 
-### Opção 2: Instalar no Fedora / RHEL / AlmaLinux (.rpm)
+- **Exemplo em proxy reverso de desenvolvimento (`proxy.conf.json` / `vite.config.ts`):**
+  ```json
+  {
+    "/api": {
+      "target": "http://localhost:8080",
+      "secure": false,
+      "changeOrigin": true
+    }
+  }
+  ```
 
-```bash
-# Dependências do sistema (Fedora):
-# sudo dnf install webkit2gtk4.1-devel curl wget file libappindicator-gtk3-devel librsvg2-devel gcc-c++
+> **Dica sobre WebSockets e Polling:**  
+> Servicos com conexoes persistentes (como Socket.io) devem preferencialmente se conectar direto a porta nativa do backend (`http://localhost:3000`) para evitar poluir o painel de inspecao REST, a menos que o objetivo seja inspecionar o handshake HTTP inicial.
 
-# Compila e gera o pacote nativo RPM
-npm run tauri build -- --bundles rpm
-
-# Instala no sistema
-sudo dnf install -y src-tauri/target/release/bundle/rpm/relay-0.1.0-1.x86_64.rpm
-```
-
-### Opção 3: Executável Binário Direto (Portátil)
-
-```bash
-# Compila o binário otimizado
-npm run tauri build
-
-# Copia para os binários locais do usuário
-mkdir -p ~/.local/bin
-cp src-tauri/target/release/relay ~/.local/bin/
-```
-
-Apos a instalacao, o **Relay** ficara disponivel no menu de aplicativos do seu ambiente desktop (GNOME, KDE Plasma, XFCE) com seu icone oficial e podera ser iniciado digitando `relay` no terminal.
-
----
-
-## Desenvolvimento Local
-
-Para rodar o projeto com hot-reload ativo:
-
-```bash
-# 1. Instale as dependencias do frontend
-npm install
-
-# 2. Inicie em modo de desenvolvimento
-npm run tauri dev
-```
+### 3. Inspecionar, Testar e Reproduzir
+- O Relay registra cada chamada com status, metodo, latencia e tamanho.
+- Clique em qualquer requisicao para abrir os detalhes, visualizar o JSON formatado, extrair tokens JWT ou copiar o comando cURL pronto.
+- Use o botao **Replay** para reenviar a chamada alterando parametros ou testar rotas no menu de **Colecoes**.
 
 ---
 
-## Fluxo de Interceptacao
+## Comandos Uteis do Projeto
+
+| Comando | Descricao |
+| :--- | :--- |
+| `./setup.sh` | Valida dependencias locais e atualiza o app no sistema se ja estiver instalado |
+| `./setup.sh --dev-only` | Prepara apenas o ambiente local de desenvolvimento sem compilar o desktop |
+| `./setup.sh --install` | Forca a compilacao e instalacao/reinstalacao do app no sistema operacional |
+| `npm run tauri dev` | Inicia o Relay em modo de desenvolvimento com hot-reload |
+| `npm run check` | Executa a verificacao estatica de tipos (TypeScript + Svelte) |
+| `cargo test --manifest-path src-tauri/Cargo.toml` | Executa a suite de testes unitarios do backend Rust |
+| `npm run tauri build` | Gera o executavel binario otimizado em `src-tauri/target/release/` |
+| `npm run tauri build -- --bundles deb` | Gera o pacote de instalacao Debian/Ubuntu (`.deb`) |
+| `npm run tauri build -- --bundles rpm` | Gera o pacote de instalacao Fedora/RHEL (`.rpm`) |
+
+---
+
+## Arquitetura de Interceptacao
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor Dev as App Cliente / Frontend
-    participant Proxy as Relay Proxy Engine (Rust / Hyper)
-    participant Bus as Tauri IPC Event Bus
-    participant UI as Svelte 5 Frontend (Inspector)
-    participant Upstream as API Alvo / Backend
+    actor Cliente as App Cliente / Frontend
+    participant Relay as Relay Engine (Rust / Hyper)
+    participant UI as Interface Svelte 5 (Inspector)
+    participant API as Backend Upstream (ex: :3000)
 
-    Dev->>Proxy: Envia Requisicao HTTP (ex: 127.0.0.1:8080)
-    Proxy->>Bus: Emite evento relay:request (Zero-copy)
-    Bus->>UI: Renderiza na Request List em tempo real
+    Cliente->>Relay: Requisicao HTTP (ex: http://localhost:8080/api/users)
+    Relay->>UI: Emite evento zero-copy (Request List)
     
-    opt Injecao de Latencia / Simulacao de Erro
-        Proxy->>Proxy: Aplica delay/falha configurada
+    opt Chaos / Mock
+        Relay->>Relay: Aplica delay/jitter configurado ou responde com mock
     end
     
-    Proxy->>Upstream: Encaminha Requisicao para o destino
-    Upstream-->>Proxy: Retorna Resposta com Headers e Body
-    
-    Proxy->>Bus: Emite evento relay:response (Status, Latencia, Body)
-    Bus->>UI: Atualiza Inspector de Detalhes
-    
-    Proxy-->>Dev: Entrega a Resposta original ao cliente
+    Relay->>API: Encaminha requisicao original para o upstream
+    API-->>Relay: Resposta com Status, Headers e Body
+    Relay->>UI: Emite evento de conclusao (Response Inspector, JWT, DAST)
+    Relay-->>Cliente: Entrega resposta ao cliente sem alteracao
 ```
 
 ---
 
-## Documentacao dos Modulos
+## Licenca
 
-| Modulo | Descricao |
-| :--- | :--- |
-| **Proxy Engine** | Motor TCP assincrono Tokio + Hyper, rotas de Mock e Chaos Simulator |
-| **Live Inspector** | Inspecionador em tempo real, abertura direta no Response, barra lateral redimensionavel, filtros e cURL |
-| **JWT & Session** | Deteccao automatica e decodificacao de claims JWT em headers, cookies e payloads (proxy e replay) |
-| **HTTP Replay** | Disparo de requisicoes manuais com variaveis dinamicas (`{{token}}`, `{{id}}`) e foco automatico no retorno |
-| **Chaos Engineering** | Injeção de latencia artificial com jitter e simulacao de falhas HTTP |
-| **Export & CA** | Exportacao para HAR 1.2, OpenAPI 3.0 e geracao de certificados CA locais |
-| **Multi-Projetos & Colecoes** | Workspaces isolados, importador OpenAPI/Postman, pastas em arvore e salvamento direto do historico |
-| **Ambientes & Scanner** | Deteccao assincrona de portas ativas no Linux e alvos personalizados |
-| **Seguranca Shift-Left & STRIDE** | Auditoria passiva DAST, testes ativos (BOLA, IDOR, Mass Assignment) e modelagem de ameacas STRIDE |
-
+Distribuido sob a licenca MIT. Consulte o arquivo `LICENSE` para mais informacoes.

@@ -68,7 +68,7 @@ impl ProxyServer {
                                     let mut builder = http1::Builder::new();
                                     builder.timer(TokioTimer::new());
 
-                                    if let Err(err) = builder.serve_connection(io, service).await {
+                                    if let Err(err) = builder.serve_connection(io, service).with_upgrades().await {
                                         warn!("Erro na conexão do cliente ({}): {:?}", client_addr, err);
                                     }
                                 });
@@ -94,6 +94,15 @@ impl ProxyServer {
             let _ = tx.send(true);
         }
     }
+}
+
+pub fn is_infrastructure_route(uri: &str) -> bool {
+    let clean = uri.split('?').next().unwrap_or(uri);
+    clean.starts_with("/socket.io")
+        || clean.starts_with("/__vite_ping")
+        || clean.contains("webpack-hmr")
+        || clean.contains("hot-update")
+        || uri.contains("transport=websocket")
 }
 
 pub struct RouteTargetResolution {
@@ -226,27 +235,45 @@ pub async fn handle_proxy_request(
         error: None,
     };
 
-    // Auto-extração de JWT nos cabeçalhos da Requisição
-    if config.auto_extract_jwt {
-        let req_jwts = extract_jwts_from_headers(&header_tuples, "request");
+    let is_infra = is_infrastructure_route(&uri_string);
+
+    if is_infra {
         if let Some(state) = app.try_state::<Arc<AppState>>() {
-            for jwt in req_jwts {
-                state.session.insert_jwt(jwt.clone());
-                let _ = app.emit("relay:jwt", &jwt);
+            let count = state
+                .silenced_traffic_count
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+                + 1;
+            let _ = app.emit(
+                "relay:traffic_silenced",
+                serde_json::json!({
+                    "count": count,
+                    "uri": uri_string.clone(),
+                }),
+            );
+        }
+    } else {
+        // Auto-extração de JWT nos cabeçalhos da Requisição
+        if config.auto_extract_jwt {
+            let req_jwts = extract_jwts_from_headers(&header_tuples, "request");
+            if let Some(state) = app.try_state::<Arc<AppState>>() {
+                for jwt in req_jwts {
+                    state.session.insert_jwt(jwt.clone());
+                    let _ = app.emit("relay:jwt", &jwt);
+                }
             }
         }
-    }
 
-    // Armazena no estado compartilhado em memória (Ring buffer rígido de 150 itens)
-    if let Some(state) = app.try_state::<Arc<AppState>>() {
-        let mut exchs = state.exchanges.lock();
-        if exchs.len() >= 150 {
-            exchs.remove(0);
+        // Armazena no estado compartilhado em memória (Ring buffer rígido de 150 itens)
+        if let Some(state) = app.try_state::<Arc<AppState>>() {
+            let mut exchs = state.exchanges.lock();
+            if exchs.len() >= 150 {
+                exchs.remove(0);
+            }
+            exchs.push(exchange.clone());
         }
-        exchs.push(exchange.clone());
-    }
 
-    let _ = app.emit("relay:request", &exchange);
+        let _ = app.emit("relay:request", &exchange);
+    }
 
     // Resolução de Rota Dinâmica
     let route_res = resolve_route_target_full(&uri_string, &config);
@@ -414,34 +441,57 @@ pub async fn handle_proxy_request(
                 }
             }
 
-            if let Some(state) = app.try_state::<Arc<AppState>>() {
-                let mut exchs = state.exchanges.lock();
-                if let Some(item) = exchs.iter_mut().find(|e| e.id == req_id) {
-                    item.response = Some(intercepted_res.clone());
-                    item.status = "completed".to_string();
+            if !is_infra {
+                // Auto-captura JWT em respostas
+                if config.auto_extract_jwt {
+                    let res_header_tuples: Vec<(String, String)> = res_headers
+                        .iter()
+                        .map(|h| (h.key.clone(), h.value.clone()))
+                        .collect();
 
-                    // Auditoria Passiva de Segurança Contínua (Shift-Left DAST)
-                    let findings = crate::security::audit_exchange(item);
-                    if !findings.is_empty() {
-                        let mut sec_lock = state.security_findings.lock();
-                        for f in findings {
-                            let _ = app.emit("relay:security_finding", &f);
-                            if sec_lock.len() >= 200 {
-                                sec_lock.remove(0);
-                            }
-                            sec_lock.push(f);
+                    let mut res_jwts = extract_jwts_from_headers(&res_header_tuples, "response_header");
+                    if let Some(ref body_text) = res_body_str {
+                        let body_jwts = extract_jwts_from_body(body_text, "response_body");
+                        res_jwts.extend(body_jwts);
+                    }
+
+                    if let Some(state) = app.try_state::<Arc<AppState>>() {
+                        for jwt in res_jwts {
+                            state.session.insert_jwt(jwt.clone());
+                            let _ = app.emit("relay:jwt", &jwt);
                         }
                     }
                 }
-            }
 
-            let _ = app.emit("relay:response", &intercepted_res);
+                if let Some(state) = app.try_state::<Arc<AppState>>() {
+                    let mut exchs = state.exchanges.lock();
+                    if let Some(item) = exchs.iter_mut().find(|e| e.id == req_id) {
+                        item.response = Some(intercepted_res.clone());
+                        item.status = "completed".to_string();
+
+                        // Auditoria Passiva de Segurança Contínua (Shift-Left DAST)
+                        let findings = crate::security::audit_exchange(item);
+                        if !findings.is_empty() {
+                            let mut sec_lock = state.security_findings.lock();
+                            for f in findings {
+                                let _ = app.emit("relay:security_finding", &f);
+                                if sec_lock.len() >= 200 {
+                                    sec_lock.remove(0);
+                                }
+                                sec_lock.push(f);
+                            }
+                        }
+                    }
+                }
+
+                let _ = app.emit("relay:response", &intercepted_res);
+            }
 
             let mut builder = Response::builder().status(status);
             for h in &res_headers {
-                if !h.key.eq_ignore_ascii_case("transfer-encoding")
-                    && !h.key.eq_ignore_ascii_case("connection")
-                {
+                let is_connection = h.key.eq_ignore_ascii_case("connection");
+                let is_transfer = h.key.eq_ignore_ascii_case("transfer-encoding");
+                if !is_transfer && (!is_connection || status == StatusCode::SWITCHING_PROTOCOLS) {
                     if let Ok(name) = hyper::header::HeaderName::from_bytes(h.key.as_bytes()) {
                         if let Ok(val) = hyper::header::HeaderValue::from_str(&h.value) {
                             builder = builder.header(name, val);
@@ -459,21 +509,23 @@ pub async fn handle_proxy_request(
             }))
         }
         Err(err_msg) => {
-            if let Some(state) = app.try_state::<Arc<AppState>>() {
-                let mut exchs = state.exchanges.lock();
-                if let Some(item) = exchs.iter_mut().find(|e| e.id == req_id) {
-                    item.status = "failed".to_string();
-                    item.error = Some(err_msg.clone());
+            if !is_infra {
+                if let Some(state) = app.try_state::<Arc<AppState>>() {
+                    let mut exchs = state.exchanges.lock();
+                    if let Some(item) = exchs.iter_mut().find(|e| e.id == req_id) {
+                        item.status = "failed".to_string();
+                        item.error = Some(err_msg.clone());
+                    }
                 }
-            }
 
-            let _ = app.emit(
-                "relay:error",
-                serde_json::json!({
-                    "requestId": req_id,
-                    "error": err_msg,
-                }),
-            );
+                let _ = app.emit(
+                    "relay:error",
+                    serde_json::json!({
+                        "requestId": req_id,
+                        "error": err_msg,
+                    }),
+                );
+            }
 
             let error_payload = format!(
                 r#"{{"error": "Relay Proxy Error: Falha ao conectar com o upstream: {}"}}"#,
@@ -541,18 +593,25 @@ pub async fn forward_to_upstream(
         .map_err(|e| format!("Erro no handshake com upstream: {}", e))?;
 
     tokio::spawn(async move {
-        if let Err(err) = conn.await {
+        if let Err(err) = conn.with_upgrades().await {
             warn!("Conexão com upstream finalizada: {:?}", err);
         }
+    });
+
+    let is_upgrade = headers.iter().any(|h| {
+        h.key.eq_ignore_ascii_case("upgrade")
+            || (h.key.eq_ignore_ascii_case("connection")
+                && h.value.to_ascii_lowercase().contains("upgrade"))
     });
 
     let mut builder = Request::builder().method(method).uri(uri_path);
 
     for h in headers {
-        if !h.key.eq_ignore_ascii_case("host")
-            && !h.key.eq_ignore_ascii_case("connection")
-            && !h.key.eq_ignore_ascii_case("transfer-encoding")
-        {
+        let is_host = h.key.eq_ignore_ascii_case("host");
+        let is_connection = h.key.eq_ignore_ascii_case("connection");
+        let is_transfer = h.key.eq_ignore_ascii_case("transfer-encoding");
+
+        if !is_host && !is_transfer && (!is_connection || is_upgrade) {
             if let Ok(name) = hyper::header::HeaderName::from_bytes(h.key.as_bytes()) {
                 if let Ok(val) = hyper::header::HeaderValue::from_str(&h.value) {
                     builder = builder.header(name, val);

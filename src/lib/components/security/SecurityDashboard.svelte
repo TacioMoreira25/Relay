@@ -12,6 +12,7 @@
     IconActivity,
   } from "$lib/components/icons";
   import { invoke } from "@tauri-apps/api/core";
+  import { createClipboardFeedback } from "$lib/utils";
   import ActiveProbesModal from "./ActiveProbesModal.svelte";
   import StrideMap from "./StrideMap.svelte";
 
@@ -70,17 +71,7 @@
     window.addEventListener("mouseup", onMouseUp);
   }
 
-  async function copyToClipboard(text: string, id: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(text);
-      copyFeedback = id;
-      setTimeout(() => {
-        if (copyFeedback === id) copyFeedback = null;
-      }, 2000);
-    } catch (e) {
-      console.error("Falha ao copiar:", e);
-    }
-  }
+  const copyToClipboard = createClipboardFeedback((id) => (copyFeedback = id));
 
   function getSeverityClass(severity: FindingSeverity): { badge: string; dot: string; text: string } {
     switch (severity) {

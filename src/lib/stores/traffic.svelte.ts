@@ -234,6 +234,7 @@ class RelayState {
   statusFilter = $state<string>("ALL");
   historySourceFilter = $state<"ALL" | "MANUAL" | "AUTO">("ALL");
   hidePolling = $state<boolean>(false);
+  silencedTrafficCount = $state<number>(0);
 
   config = $state<ProxyConfig>({
     listenPort: 8080,
@@ -797,6 +798,7 @@ class RelayState {
     this.selectedExchange = null;
     this.diffCompareExchange = null;
     this.inspectorTab = "request";
+    this.silencedTrafficCount = 0;
     saveExchangesToStorage(this.exchanges);
   }
 

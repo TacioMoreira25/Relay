@@ -3,20 +3,10 @@
   import type { ExtractedJwt } from "$lib/types";
   import { IconKey, IconTrash, IconCopy, IconCheck, IconShield } from "$lib/components/icons";
   import { invoke } from "@tauri-apps/api/core";
+  import { createClipboardFeedback } from "$lib/utils";
 
   let copyFeedback = $state<string | null>(null);
-
-  async function copyToClipboard(text: string, id: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(text);
-      copyFeedback = id;
-      setTimeout(() => {
-        if (copyFeedback === id) copyFeedback = null;
-      }, 2000);
-    } catch (e) {
-      console.error("Falha ao copiar token:", e);
-    }
-  }
+  const copyToClipboard = createClipboardFeedback((id) => (copyFeedback = id));
 
   async function clearAllJwts(): Promise<void> {
     try {

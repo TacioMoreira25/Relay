@@ -29,6 +29,7 @@ pub fn run() {
         exchanges: Mutex::new(Vec::new()),
         config: Mutex::new(ProxyConfig::default()),
         security_findings: Mutex::new(Vec::new()),
+        silenced_traffic_count: std::sync::atomic::AtomicU64::new(0),
     });
 
     tauri::Builder::default()

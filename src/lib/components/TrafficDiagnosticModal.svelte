@@ -41,17 +41,21 @@
       <!-- Content Area -->
       <div class="space-y-3.5 overflow-y-auto pr-1 text-xs text-zinc-300 leading-relaxed">
         <!-- Métricas Rápidas -->
-        <div class="grid grid-cols-3 gap-2 font-mono text-[11px]">
-          <div class="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col">
-            <span class="text-zinc-500 text-[10px]">Em Polling / Loop</span>
+        <div class="grid grid-cols-4 gap-2 font-mono text-[11px]">
+          <div class="bg-zinc-950 p-2 rounded-lg border border-zinc-800 flex flex-col">
+            <span class="text-zinc-500 text-[9px]">Em Polling</span>
             <span class="text-indigo-400 font-bold text-sm mt-0.5">{countPoll}</span>
           </div>
-          <div class="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col">
-            <span class="text-zinc-500 text-[10px]">Rotas 404 (Not Found)</span>
+          <div class="bg-zinc-950 p-2 rounded-lg border border-zinc-800 flex flex-col">
+            <span class="text-zinc-500 text-[9px]">Silenciadas</span>
+            <span class="text-sky-400 font-bold text-sm mt-0.5">{relayState.silencedTrafficCount}</span>
+          </div>
+          <div class="bg-zinc-950 p-2 rounded-lg border border-zinc-800 flex flex-col">
+            <span class="text-zinc-500 text-[9px]">Rotas 404</span>
             <span class="text-rose-400 font-bold text-sm mt-0.5">{count404}</span>
           </div>
-          <div class="bg-zinc-950 p-2.5 rounded-lg border border-zinc-800 flex flex-col">
-            <span class="text-zinc-500 text-[10px]">Falhas (4xx / 5xx)</span>
+          <div class="bg-zinc-950 p-2 rounded-lg border border-zinc-800 flex flex-col">
+            <span class="text-zinc-500 text-[9px]">Falhas (4xx/5xx)</span>
             <span class="text-amber-400 font-bold text-sm mt-0.5">{countErrors}</span>
           </div>
         </div>
@@ -91,14 +95,22 @@
           </div>
         </div>
 
-        <!-- Ponto 3: Reconexões de Canais em Tempo Real -->
+        <!-- Ponto 3: Reconexões Contínuas de Canais em Tempo Real & WebSockets -->
         <div class="bg-zinc-950/80 p-3.5 rounded-xl border border-amber-500/20 space-y-1.5">
           <div class="flex items-center space-x-2 text-amber-300 font-bold text-xs">
-            <span>3. Reconexões Contínuas de Canais em Tempo Real</span>
+            <span>3. Reconexões Contínuas de Canais em Tempo Real & WebSockets</span>
           </div>
           <p class="text-[11px] text-zinc-400">
-            Bibliotecas e clientes que usam WebSockets, SSE ou conexões persistentes possuem retentativa agressiva nativa. Caso o aperto de mão (handshake) ou a negociação retorne erro (como 400 ou 502), o cliente tenta reconectar continuamente em intervalos imediatos.
+            Bibliotecas como Socket.io ou clientes WebSocket possuem reconexão agressiva nativa. Se a negociação falhar (status 400), o cliente tenta reconectar a cada poucos milissegundos e dispara re-consultas na API.
           </p>
+          <div class="bg-zinc-900/60 p-2.5 rounded text-[11px] text-zinc-300 space-y-1.5 border border-zinc-800">
+            <p><strong>Boas práticas de arquitetura recomendadas:</strong></p>
+            <ul class="list-disc list-inside space-y-1 text-zinc-400 text-[10px]">
+              <li><strong class="text-zinc-200">Isolar rotas de WebSocket:</strong> Aponte o WebSocket direto para o backend (ex: se usar proxy do Angular/Vite, use <span class="font-mono text-zinc-300">"ws": true</span> em <span class="font-mono text-zinc-300">/socket.io</span>).</li>
+              <li><strong class="text-zinc-200">Portas configuráveis:</strong> Portas como <span class="font-mono text-zinc-300">:8080</span> (Relay) e <span class="font-mono text-zinc-300">:3000</span> (backend) são apenas exemplos padrão; defina livremente as portas do seu ambiente.</li>
+              <li><strong class="text-zinc-200">Cache no Frontend:</strong> Use operadores como <span class="font-mono text-zinc-300">shareReplay</span> (RxJS/Angular) ou <span class="font-mono text-zinc-300">staleTime</span> (React Query) para evitar que múltiplos componentes consultem dados repetidos ao mesmo tempo.</li>
+            </ul>
+          </div>
         </div>
 
         <!-- Ponto 4: Recursos do Relay para Isolamento de Tráfego -->
@@ -110,6 +122,7 @@
             Para manter a visualização limpa e focada durante seus testes:
           </p>
           <ul class="list-disc list-inside space-y-1 text-[11px] text-zinc-300 pl-1">
+            <li>O Relay filtra e silencia pings de infraestrutura em segundo plano automaticamente, indicando a contagem de forma discreta na barra lateral.</li>
             <li>Ative o botão <span class="font-mono bg-amber-500/10 text-amber-300 px-1 py-0.2 rounded border border-amber-500/20">Ocultar Polling</span> na barra lateral para esconder chamadas idênticas em curto intervalo.</li>
             <li>Alterne para a aba <span class="font-mono bg-zinc-800 text-zinc-200 px-1 py-0.2 rounded">Manuais</span> para enxergar apenas as requisições disparadas deliberadamente por você.</li>
           </ul>

@@ -16,6 +16,7 @@
   import { invoke } from "@tauri-apps/api/core";
 
   import TrafficDiagnosticModal from "$lib/components/TrafficDiagnosticModal.svelte";
+  import { getMethodBadgeClass, getStatusCodeClass } from "$lib/utils";
 
   let {
     onOpenTemplate = (_tpl: SavedRequestTemplate) => {},
@@ -191,23 +192,6 @@
     return groups;
   });
 
-  function getMethodBadgeStyle(method: string): string {
-    switch (method.toUpperCase()) {
-      case "GET":
-        return "text-sky-400 bg-sky-500/10 border-sky-500/30";
-      case "POST":
-        return "text-emerald-400 bg-emerald-500/10 border-emerald-500/30";
-      case "PUT":
-        return "text-amber-400 bg-amber-500/10 border-amber-500/30";
-      case "DELETE":
-        return "text-rose-400 bg-rose-500/10 border-rose-500/30";
-      case "PATCH":
-        return "text-purple-400 bg-purple-500/10 border-purple-500/30";
-      default:
-        return "text-zinc-400 bg-zinc-800 border-zinc-700";
-    }
-  }
-
   function getMethodPillActiveStyle(m: string): string {
     if (relayState.methodFilter !== m) {
       return "bg-zinc-900 text-zinc-500 border-zinc-800 hover:text-zinc-300";
@@ -226,19 +210,6 @@
       default:
         return "bg-zinc-700 text-white font-bold border-zinc-600 shadow-xs";
     }
-  }
-
-  function getStatusStyle(code?: number, statusStr?: string): string {
-    if (statusStr === "failed" || (code && code >= 400)) {
-      return "text-rose-400 font-semibold";
-    }
-    if (code && code >= 200 && code < 300) {
-      return "text-emerald-400 font-semibold";
-    }
-    if (code && code >= 300 && code < 400) {
-      return "text-amber-400";
-    }
-    return "text-zinc-500";
   }
 
   async function clearTraffic(): Promise<void> {
@@ -373,7 +344,7 @@
         />
 
         {#if relayState.methodFilter !== 'ALL'}
-          <span class="absolute right-2 top-2 text-[9px] px-1 py-0.2 rounded font-mono font-bold border {getMethodBadgeStyle(relayState.methodFilter)}">
+          <span class="absolute right-2 top-2 text-[9px] px-1 py-0.2 rounded font-mono font-bold border {getMethodBadgeClass(relayState.methodFilter)}">
             {relayState.methodFilter}
           </span>
         {/if}
@@ -499,8 +470,20 @@
       </div>
     {/if}
 
-    <!-- Indicador Didático de Tráfego em Loop (Se detectado) -->
-    {#if hasLoopingTraffic && relayState.sidebarTab === 'history'}
+    <!-- Indicador Didático de Tráfego Silenciado ou em Loop -->
+    {#if relayState.silencedTrafficCount > 0 && relayState.sidebarTab === 'history'}
+      <button
+        onclick={() => (isDiagnosticModalOpen = true)}
+        class="w-full text-left px-2 py-1 rounded bg-sky-500/10 hover:bg-sky-500/15 border border-sky-500/30 text-sky-300 text-[10px] flex items-center justify-between transition-colors cursor-pointer"
+        title="Requisições de infraestrutura silenciadas para manter sua lista limpa. Clique para ver detalhes."
+      >
+        <div class="flex items-center space-x-1.5 truncate">
+          <span class="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0"></span>
+          <span class="truncate">{relayState.silencedTrafficCount} requisições em segundo plano silenciadas</span>
+        </div>
+        <span class="underline shrink-0 ml-1 font-mono font-medium">Diagnóstico</span>
+      </button>
+    {:else if hasLoopingTraffic && relayState.sidebarTab === 'history'}
       <button
         onclick={() => (isDiagnosticModalOpen = true)}
         class="w-full text-left px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/30 text-amber-300 text-[10px] flex items-center justify-between transition-colors cursor-pointer"
@@ -553,7 +536,7 @@
                 />
               {/if}
 
-              <span class="px-1.5 py-0.2 rounded text-[10px] font-bold border {getMethodBadgeStyle(exchange.request.method)}">
+              <span class="px-1.5 py-0.2 rounded text-[10px] font-bold border {getMethodBadgeClass(exchange.request.method)}">
                 {exchange.request.method}
               </span>
 
@@ -574,7 +557,7 @@
 
             <div class="flex items-center space-x-2 text-[11px]">
               {#if exchange.response}
-                <span class={getStatusStyle(exchange.response.statusCode)}>
+                <span class={getStatusCodeClass(exchange.response.statusCode)}>
                   {exchange.response.statusCode}
                 </span>
                 <span class="text-zinc-500 text-[10px]">{exchange.response.durationMs}ms</span>
@@ -678,7 +661,7 @@
                   >
                     <div class="flex items-center justify-between font-mono text-xs">
                       <div class="flex items-center space-x-2 truncate">
-                        <span class="px-1.5 py-0.2 rounded text-[9px] font-bold border {getMethodBadgeStyle(tpl.method)}">
+                        <span class="px-1.5 py-0.2 rounded text-[9px] font-bold border {getMethodBadgeClass(tpl.method)}">
                           {tpl.method}
                         </span>
                         <span class="text-xs font-medium text-zinc-200 truncate group-hover:text-amber-200 transition-colors">
@@ -714,7 +697,7 @@
             class="p-2.5 text-left w-full hover:bg-zinc-900/60 transition-colors cursor-pointer flex flex-col space-y-1 group border-l-2 border-transparent hover:border-amber-500/60"
           >
             <div class="flex items-center justify-between font-mono text-xs">
-              <span class="px-1.5 py-0.2 rounded text-[10px] font-bold border {getMethodBadgeStyle(tpl.method)}">
+              <span class="px-1.5 py-0.2 rounded text-[10px] font-bold border {getMethodBadgeClass(tpl.method)}">
                 {tpl.method}
               </span>
 

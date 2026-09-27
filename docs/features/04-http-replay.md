@@ -12,5 +12,4 @@ Permite repetir qualquer requisição previamente capturada ou criar novas requi
 * **Captura de Resposta e Sessão:** Se a resposta do Replay contiver um token JWT (no body ou headers), o token é automaticamente decodificado e atualizado na sessão do Relay.
 
 ## 3. Componentes
-* `ReplayModal.svelte`: Modal de disparo com suporte a edição de métodos, URI, injeção de variáveis, cabeçalhos dinâmicos e salvamento na coleção.
-* `HeaderEditor.svelte`: Adiciona, edita e remove headers dinamicamente com inputs vinculados reativamente via `$bindable()`.
+* `ReplayModal.svelte`: Modal de disparo com suporte a edicao de metodos, URI, injecao de variaveis, editor de cabecalhos dinamicos integrado e salvamento na colecao.

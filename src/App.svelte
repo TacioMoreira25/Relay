@@ -138,6 +138,7 @@
     let unlistenErr: UnlistenFn;
     let unlistenJwt: UnlistenFn;
     let unlistenSec: UnlistenFn;
+    let unlistenSilenced: UnlistenFn;
 
     listen<HttpExchange>("relay:request", (event) => {
       relayState.addExchange(event.payload);
@@ -158,6 +159,10 @@
     listen<SecurityFinding>("relay:security_finding", (event) => {
       relayState.addSecurityFinding(event.payload);
     }).then((unlisten) => (unlistenSec = unlisten));
+
+    listen<{ count: number; uri: string }>("relay:traffic_silenced", (event) => {
+      relayState.silencedTrafficCount = event.payload.count;
+    }).then((unlisten) => (unlistenSilenced = unlisten));
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.ctrlKey || e.metaKey) {
@@ -189,6 +194,7 @@
       unlistenErr?.();
       unlistenJwt?.();
       unlistenSec?.();
+      unlistenSilenced?.();
       window.removeEventListener("keydown", handleKeyDown);
     };
   });
